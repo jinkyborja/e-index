@@ -1,0 +1,936 @@
+.teacher-shell {
+  --teacher-content-max: 1400px;
+  --teacher-space-1: 4px;
+  --teacher-space-2: 8px;
+  --teacher-space-3: 12px;
+  --teacher-space-4: 16px;
+  --teacher-space-5: 20px;
+  --teacher-space-6: 24px;
+  --teacher-text: #19152e;
+  --teacher-muted: #77748d;
+}
+
+.teacher-shell .page-content {
+  width: 100%;
+  max-width: var(--teacher-content-max);
+  margin-inline: auto;
+  padding: 28px clamp(20px, 3vw, 40px) 40px;
+  color: var(--teacher-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.teacher-shell .topbar {
+  min-height: 58px;
+}
+
+.teacher-shell .breadcrumbs {
+  font-size: 12px;
+}
+
+.teacher-shell .profile-chip {
+  font-size: 12px;
+}
+
+.teacher-shell .profile-chip small {
+  font-size: 12px;
+}
+
+.teacher-shell .hero {
+  min-height: 100px;
+  padding: 20px 24px;
+}
+
+.teacher-shell .hero h1 {
+  font-size: 22px;
+  letter-spacing: -.5px;
+}
+
+.teacher-shell .hero p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.teacher-shell .hero-button {
+  min-height: 40px;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
+.teacher-shell .stat-grid {
+  gap: var(--teacher-space-4);
+  margin-top: var(--teacher-space-4);
+}
+
+.teacher-shell .stat-card {
+  min-height: 128px;
+  padding: 16px 18px;
+}
+
+.teacher-shell .stat-icon {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 8px;
+}
+
+.teacher-shell .stat-value {
+  font-size: 26px;
+}
+
+.teacher-shell .stat-label {
+  margin-top: 5px;
+  font-size: 14px;
+}
+
+.teacher-shell .stat-note {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.teacher-shell .teacher-dash-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--teacher-space-4);
+  margin-top: var(--teacher-space-4);
+}
+
+.teacher-shell .today-panel,
+.teacher-shell .quick-panel {
+  min-width: 0;
+  padding: 20px;
+}
+
+.teacher-shell .panel-heading h3,
+.teacher-shell .panel h3 {
+  font-size: 17px;
+}
+
+.teacher-shell .schedule-item {
+  gap: var(--teacher-space-3);
+  padding: 13px 2px;
+}
+
+.teacher-shell .schedule-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.teacher-shell .schedule-item small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.teacher-shell .schedule-item strong {
+  font-size: 14px;
+}
+
+.teacher-shell .quick-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: center;
+  gap: 18px;
+  width: min(100%, 440px);
+  margin: 18px auto 0;
+}
+
+.teacher-shell .quick-action {
+  min-height: 104px;
+  align-content: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: background .16s, border-color .16s, transform .16s;
+}
+
+.teacher-shell .quick-action:hover {
+  transform: translateY(-2px);
+  border-color: #f3d9e5;
+  background: #fff8fb;
+}
+
+.teacher-shell .quick-action span {
+  width: 48px;
+  height: 48px;
+}
+
+.teacher-shell .quick-action small {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.teacher-shell .page-title {
+  margin-bottom: 20px;
+}
+
+.teacher-shell .page-title h1 {
+  font-size: 24px;
+  letter-spacing: -.5px;
+}
+
+.teacher-shell .page-title p {
+  max-width: 680px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.teacher-shell .page-title-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.teacher-shell .page-content .primary,
+.teacher-shell .page-content .outline-btn,
+.teacher-shell .page-content .soft-btn {
+  min-height: 40px;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
+.teacher-shell .page-content .primary.tiny {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.teacher-shell .tabs {
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.teacher-shell .tabs button {
+  min-height: 40px;
+  padding: 0 3px 11px;
+  font-size: 13px;
+}
+
+.teacher-shell .table-panel,
+.teacher-shell .compact-table {
+  min-width: 0;
+  padding: 18px 20px 14px;
+}
+
+.teacher-shell .toolbar {
+  gap: var(--teacher-space-2);
+  margin-bottom: 14px;
+}
+
+.teacher-shell .search-field {
+  height: 42px;
+  gap: 9px;
+  padding-inline: 12px;
+}
+
+.teacher-shell .search-field input,
+.teacher-shell .toolbar select,
+.teacher-shell .table-footer select,
+.teacher-shell .date-input {
+  font-size: 13px;
+}
+
+.teacher-shell .toolbar select,
+.teacher-shell .date-input {
+  height: 42px;
+  padding-inline: 12px;
+}
+
+.teacher-shell .table-scroll {
+  overscroll-behavior-x: contain;
+}
+
+.teacher-shell .table-scroll table {
+  min-width: 780px;
+}
+
+.teacher-shell th {
+  padding: 13px 12px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.teacher-shell td {
+  padding: 13px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.teacher-shell td strong {
+  font-size: 14px;
+}
+
+.teacher-shell th:last-child,
+.teacher-shell td:last-child {
+  width: auto;
+  text-align: right;
+}
+
+.teacher-shell .compact-table th:first-child,
+.teacher-shell .compact-table td:first-child,
+.teacher-shell .roster-panel th:first-child,
+.teacher-shell .roster-panel td:first-child {
+  width: auto;
+  text-align: left;
+}
+
+.teacher-shell .status,
+.teacher-shell .role-pill {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.teacher-shell .row-actions {
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.teacher-shell .row-action {
+  width: 34px;
+  height: 34px;
+}
+
+.teacher-shell .table-footer {
+  gap: 12px;
+  padding-top: 14px;
+  font-size: 12px;
+}
+
+.teacher-shell .table-footer select,
+.teacher-shell .pagination {
+  min-height: 34px;
+  font-size: 12px;
+}
+
+.teacher-shell .empty-table,
+.teacher-shell .empty-inline {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.teacher-shell .attendance-controls {
+  gap: var(--teacher-space-4);
+  padding: 18px;
+  margin-bottom: var(--teacher-space-4);
+}
+
+.teacher-shell .attendance-controls label,
+.teacher-shell .settings-card label,
+.teacher-shell .form-grid label {
+  gap: var(--teacher-space-2);
+  font-size: 13px;
+}
+
+.teacher-shell .attendance-controls select,
+.teacher-shell .attendance-controls input,
+.teacher-shell .settings-card input,
+.teacher-shell .form-grid input {
+  height: 42px;
+  padding-inline: 12px;
+  font-size: 14px;
+}
+
+.teacher-shell .load-btn {
+  min-height: 42px;
+}
+
+.teacher-shell .attendance-layout {
+  grid-template-columns: minmax(280px, .75fr) minmax(0, 1.75fr);
+  align-items: start;
+  gap: var(--teacher-space-4);
+}
+
+.teacher-shell .rfid-card {
+  min-height: 250px;
+  gap: 14px;
+  padding: 22px;
+}
+
+.teacher-shell .rfid-card h3 {
+  font-size: 17px;
+}
+
+.teacher-shell .rfid-card > strong {
+  font-size: 14px;
+  text-align: center;
+}
+
+.teacher-shell .listening {
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.teacher-shell .rfid-scan-form input,
+.teacher-shell .remarks-input,
+.teacher-shell .attendance-status {
+  min-height: 40px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.teacher-shell .remarks-input {
+  width: clamp(140px, 16vw, 200px);
+}
+
+.teacher-shell .attendance-right {
+  gap: var(--teacher-space-3);
+}
+
+.teacher-shell .attendance-stats {
+  gap: var(--teacher-space-3);
+}
+
+.teacher-shell .mini-stat {
+  min-height: 92px;
+  gap: 7px;
+  padding: 14px;
+}
+
+.teacher-shell .mini-stat small {
+  font-size: 13px;
+}
+
+.teacher-shell .mini-stat strong {
+  font-size: 20px;
+}
+
+.teacher-shell .compact-table table {
+  min-width: 700px;
+}
+
+.teacher-shell .compact-table th,
+.teacher-shell .compact-table td {
+  padding: 12px 10px;
+}
+
+.teacher-shell .classes-layout {
+  grid-template-columns: minmax(250px, 7fr) minmax(0, 13fr);
+  align-items: start;
+  gap: var(--teacher-space-4);
+}
+
+.teacher-shell .class-list {
+  gap: var(--teacher-space-2);
+  padding: 12px;
+}
+
+.teacher-shell .class-choice {
+  gap: 12px;
+  min-height: 66px;
+  padding: 12px;
+}
+
+.teacher-shell .class-choice > span {
+  width: 38px;
+  height: 38px;
+  flex: none;
+}
+
+.teacher-shell .class-choice div {
+  gap: 5px;
+  min-width: 0;
+}
+
+.teacher-shell .class-choice strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.teacher-shell .class-choice small,
+.teacher-shell .detail-grid small {
+  font-size: 12px;
+}
+
+.teacher-shell .class-detail {
+  min-width: 0;
+  padding: 22px;
+}
+
+.teacher-shell .class-detail-heading {
+  flex-wrap: wrap;
+  gap: var(--teacher-space-3);
+}
+
+.teacher-shell .class-detail-heading h3 {
+  font-size: 18px;
+}
+
+.teacher-shell .detail-grid {
+  gap: var(--teacher-space-5);
+  margin: 22px 0;
+}
+
+.teacher-shell .detail-grid strong {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.teacher-shell .section-row {
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 12px;
+  min-height: 52px;
+  padding: 9px 14px;
+  font-size: 14px;
+}
+
+.teacher-shell .section-header {
+  font-size: 13px;
+}
+
+.teacher-shell .section-row button {
+  min-width: 118px;
+}
+
+.teacher-shell .roster-panel {
+  margin-top: 22px;
+}
+
+.teacher-shell .roster-panel .panel-heading {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.teacher-shell .roster-panel .search-field {
+  flex: 0 1 270px;
+}
+
+.teacher-shell .report-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--teacher-space-4);
+  margin-bottom: var(--teacher-space-4);
+  padding: 18px 20px;
+}
+
+.teacher-shell .report-filters label {
+  gap: var(--teacher-space-2);
+  color: #514a60;
+  font-size: 13px;
+}
+
+.teacher-shell .report-filters select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.teacher-shell .report-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: var(--teacher-space-4);
+}
+
+.teacher-shell .chart-panel {
+  min-width: 0;
+  min-height: 0;
+  padding: 22px;
+}
+
+.teacher-shell .chart-panel h3 {
+  margin-bottom: 16px;
+  font-size: 17px;
+}
+
+.teacher-shell .chart-panel .donut-wrap {
+  flex-wrap: wrap;
+  gap: 22px;
+  padding-top: 14px;
+}
+
+.teacher-shell .report-donut {
+  flex: none;
+  width: 142px;
+  height: 142px;
+}
+
+.teacher-shell .report-donut strong {
+  font-size: 22px;
+}
+
+.teacher-shell .chart-panel .legend {
+  gap: 12px;
+  min-width: min(150px, 100%);
+}
+
+.teacher-shell .chart-panel .legend p,
+.teacher-shell .chart-panel .legend b {
+  font-size: 13px;
+}
+
+.teacher-shell .report-data-row {
+  align-items: center;
+  padding: 15px 2px;
+  font-size: 13px;
+}
+
+.teacher-shell .report-data-row strong {
+  font-size: 14px;
+  text-align: right;
+}
+
+.teacher-shell .profile-settings {
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: var(--teacher-space-5);
+  padding: 22px;
+}
+
+.teacher-shell .profile-summary {
+  min-width: 0;
+  padding: 18px;
+}
+
+.teacher-shell .profile-avatar {
+  width: 82px;
+  height: 82px;
+}
+
+.teacher-shell .profile-summary h3 {
+  font-size: 17px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.teacher-shell .profile-summary p {
+  font-size: 13px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.teacher-shell .profile-form {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.teacher-shell .form-heading {
+  margin-bottom: 16px;
+}
+
+.teacher-shell .form-heading h3 {
+  font-size: 18px;
+}
+
+.teacher-shell .form-grid {
+  gap: var(--teacher-space-4);
+}
+
+.teacher-shell .form-grid input {
+  width: 100%;
+}
+
+.teacher-shell .form-actions {
+  margin-top: var(--teacher-space-5);
+}
+
+.teacher-shell .settings-card {
+  width: min(100%, 760px);
+  max-width: none;
+  gap: var(--teacher-space-4);
+  padding: 24px;
+}
+
+.teacher-shell .settings-card > h3 {
+  font-size: 18px;
+}
+
+.teacher-shell .settings-card > p,
+.teacher-shell .appearance-choice,
+.teacher-shell .toggle-row {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.teacher-shell .appearance-choice,
+.teacher-shell .toggle-row {
+  gap: var(--teacher-space-3);
+  min-height: 52px;
+  padding: 13px 15px;
+}
+
+.teacher-shell .toggle-row input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.teacher-shell .record-details {
+  gap: 8px;
+  font-size: 14px;
+}
+
+.teacher-shell .record-details > p {
+  gap: var(--teacher-space-4);
+  padding: 12px 0;
+}
+
+.teacher-shell .text-link {
+  font-size: 12px;
+}
+
+@media (max-width: 1050px) {
+  .teacher-shell .page-content {
+    padding-inline: 22px;
+  }
+
+  .teacher-shell .teacher-dash-grid,
+  .teacher-shell .report-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-shell .classes-layout {
+    grid-template-columns: minmax(220px, 35fr) minmax(0, 65fr);
+  }
+
+  .teacher-shell .attendance-layout {
+    grid-template-columns: minmax(250px, .8fr) minmax(0, 1.5fr);
+  }
+}
+
+@media (max-width: 1250px) {
+  .teacher-shell .quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(100%, 340px);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 850px) {
+  .teacher-shell .stat-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-shell .semester-select {
+    display: none;
+  }
+
+  .teacher-shell .topbar {
+    gap: 10px;
+  }
+
+  .teacher-shell .teacher-dash-grid,
+  .teacher-shell .report-grid,
+  .teacher-shell .classes-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-shell .class-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-shell .attendance-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-shell .rfid-card {
+    min-height: 220px;
+  }
+
+  .teacher-shell .profile-settings {
+    grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .teacher-shell .page-content {
+    padding: 20px 16px 30px;
+  }
+
+  .teacher-shell .topbar {
+    min-height: 58px;
+  }
+
+  .teacher-shell .stat-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-shell .quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    max-width: 420px;
+  }
+
+  .teacher-shell .quick-action {
+    min-height: 96px;
+  }
+
+  .teacher-shell .class-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-shell .attendance-controls {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .teacher-shell .attendance-controls label {
+    flex: 1 1 210px;
+  }
+
+  .teacher-shell .load-btn {
+    flex: 1 1 100%;
+  }
+
+  .teacher-shell .attendance-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-shell .report-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-shell .profile-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-shell .profile-summary {
+    border-right: 0;
+    border-bottom: 1px solid #f0edf2;
+  }
+
+  .teacher-shell .profile-form {
+    padding: 8px 4px;
+  }
+
+  .teacher-shell .toolbar .search-field {
+    flex: 1 1 100%;
+  }
+
+  .teacher-shell .page-title h1 {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 520px) {
+  .teacher-shell .page-content {
+    padding-inline: 12px;
+  }
+
+  .teacher-shell .hero {
+    min-height: 96px;
+    padding: 16px;
+  }
+
+  .teacher-shell .hero h1 {
+    font-size: 19px;
+  }
+
+  .teacher-shell .hero p {
+    max-width: 250px;
+    font-size: 13px;
+  }
+
+  .teacher-shell .stat-grid.four {
+    gap: 10px;
+  }
+
+  .teacher-shell .stat-card {
+    min-height: 120px;
+    padding: 13px;
+  }
+
+  .teacher-shell .stat-value {
+    font-size: 23px;
+  }
+
+  .teacher-shell .stat-label {
+    font-size: 13px;
+  }
+
+  .teacher-shell .stat-note {
+    font-size: 12px;
+  }
+
+  .teacher-shell .today-panel,
+  .teacher-shell .quick-panel,
+  .teacher-shell .table-panel,
+  .teacher-shell .compact-table,
+  .teacher-shell .class-detail,
+  .teacher-shell .chart-panel,
+  .teacher-shell .settings-card {
+    padding: 16px;
+  }
+
+  .teacher-shell .panel-heading h3,
+  .teacher-shell .panel h3 {
+    font-size: 16px;
+  }
+
+  .teacher-shell .page-title {
+    align-items: flex-start;
+  }
+
+  .teacher-shell .page-title-main {
+    align-items: flex-start;
+    gap: 9px;
+  }
+
+  .teacher-shell .page-title-icon {
+    width: 36px;
+    height: 36px;
+    flex: none;
+  }
+
+  .teacher-shell .page-title h1 {
+    font-size: 20px;
+  }
+
+  .teacher-shell .page-title p {
+    max-width: 100%;
+    font-size: 13px;
+  }
+
+  .teacher-shell .page-title > .primary {
+    min-height: 36px;
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+
+  .teacher-shell .tabs {
+    gap: 14px;
+    overflow-x: auto;
+  }
+
+  .teacher-shell .tabs button {
+    flex: none;
+    font-size: 12px;
+  }
+
+  .teacher-shell .report-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-shell .chart-panel .donut-wrap {
+    gap: 16px;
+  }
+
+  .teacher-shell .report-donut {
+    width: 126px;
+    height: 126px;
+  }
+
+  .teacher-shell .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .teacher-shell .section-row {
+    grid-template-columns: minmax(0, 1fr) 128px;
+    gap: 8px;
+    padding-inline: 10px;
+    font-size: 13px;
+  }
+
+  .teacher-shell .section-row button {
+    min-width: 112px;
+  }
+
+  .teacher-shell .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-shell .form-grid .full {
+    grid-column: auto;
+  }
+
+  .teacher-shell .table-footer {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
