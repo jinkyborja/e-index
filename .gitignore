@@ -3,6 +3,8 @@ dist/
 .env
 .env.*
 !.env.example
+src/.env
+src/.env.*
 server/.env
 server/certs/
 *.log

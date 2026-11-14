@@ -27,7 +27,7 @@ The route table in `src/utils/routes.js` maps those pages to URLs. Navigation an
 
 ## Run locally
 
-Requirements: Node.js 20 LTS and npm. The API connects to the existing Aiven MySQL database.
+Requirements: Node.js 22.16.0 (also pinned for Render in `.node-version`) and npm. The API connects to the existing Aiven MySQL database.
 
 ```bash
 npm install
@@ -53,6 +53,17 @@ npm run dev
 ```
 
 Open the Vite URL (normally http://localhost:5173). Vite proxies `/api` requests to the local Express server.
+
+## Deploy to Render
+
+The root `render.yaml` configures one Node web service: Render builds the existing Svelte app, and Express serves both the generated `dist/` files and `/api` from the same origin. This avoids separate frontend/API CORS configuration and does not change the UI.
+
+1. Push the project to a private GitHub repository. Do not commit `.env` or `src/.env`; if either file was ever pushed with credentials, rotate those credentials.
+2. In Render, choose **New → Blueprint**, connect the repository, and deploy `render.yaml`.
+3. In the Render service's Environment settings, set `DATABASE_URL` to the Aiven MySQL URL. Render does not read your local `.env` file. URL-encode special characters in the username and password. Add Aiven's CA certificate under **Secret Files**, for example at `/etc/secrets/aiven-ca.pem`, and set the URL's `sslcert` parameter to that absolute path with `sslaccept=strict`. Keep the connection string and certificate private.
+4. Configure Aiven's allowed inbound sources for the Render service's outbound IP ranges. Do not open MySQL to all addresses.
+5. Before creating tables, inspect the existing database in HeidiSQL and confirm that the `eindex_*` table names in the draft migration do not already exist. Back up the database, then apply the reviewed additive SQL using HeidiSQL; do not run it blindly. Render deploys do not run migrations automatically.
+6. Wait for the Render health check at `/api/health`, then test the deployed site and authentication. The current frontend still uses its LocalStorage demo login; backend authentication is not yet connected to the login UI.
 
 ## Build
 

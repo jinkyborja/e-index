@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: e-index
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
