@@ -65,6 +65,8 @@ The root `render.yaml` configures one Node web service: Render builds the existi
 5. Before creating tables, inspect the existing database in HeidiSQL and confirm that the `eindex_*` table names in the draft migration do not already exist. Back up the database, then apply the reviewed additive SQL using HeidiSQL; do not run it blindly. Render deploys do not run migrations automatically.
 6. Wait for the Render health check at `/api/health`, then test the deployed site and authentication. The current frontend still uses its LocalStorage demo login; backend authentication is not yet connected to the login UI.
 
+If Render reports a port scan timeout, open the service's **Logs** and check for a startup error before changing the port. The server binds to `0.0.0.0` and uses Render's injected `PORT`; do not hard-code a different port. Confirm that `DATABASE_URL` is set in Render's Environment settings (Render does not load `src/.env` or your local `.env`).
+
 ## Build
 
 ```bash

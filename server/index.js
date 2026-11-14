@@ -9,8 +9,12 @@ const app = createApp({
   prisma,
   staticDirectory: path.resolve(serverDirectory, '../dist')
 });
-const server = app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, '0.0.0.0', () => {
   console.log(`E-Index is listening on port ${env.PORT}`);
+});
+server.on('error', error => {
+  console.error('E-Index failed to bind its HTTP server:', error);
+  process.exitCode = 1;
 });
 
 async function shutdown(signal) {
