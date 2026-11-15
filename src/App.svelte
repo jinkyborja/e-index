@@ -1078,7 +1078,7 @@
           {#if !forgotPasswordMode && !resetPasswordMode}
             <div class="auth-tabs" role="tablist" aria-label="Account access">
               <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}><UserRound size={15}/>Sign In</button>
-              <button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}><Plus size={15}/>Create Account</button>
+              <button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create Account</button>
             </div>
           {/if}
 
