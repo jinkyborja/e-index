@@ -1607,8 +1607,7 @@
   }
 }
 
-.app-shell .settings-notifications,
-.app-shell .settings-demo-data {
+.app-shell .settings-notifications {
   --notification-primary: #c50057;
   --notification-soft: #fce7f0;
   --notification-ink: #171a3b;
@@ -1886,68 +1885,6 @@
   background: #a90049;
 }
 
-.app-shell .settings-demo-data {
-  --eindex-settings-card-max: 1000px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 14px;
-  margin-top: 14px;
-  padding: 15px 20px;
-  border: 1px solid #f2dce8;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 8px 22px rgba(109, 30, 70, .05);
-}
-
-.app-shell .demo-data-icon {
-  display: grid;
-  width: 54px;
-  height: 48px;
-  flex: 0 0 54px;
-  place-items: center;
-  border-radius: 14px;
-  background: var(--notification-soft);
-  color: var(--notification-primary);
-}
-
-.app-shell .demo-data-copy {
-  min-width: 0;
-}
-
-.app-shell .demo-data-copy h3 {
-  margin: 0 0 3px;
-  color: var(--notification-ink);
-  font-size: 16px;
-}
-
-.app-shell .demo-data-copy p {
-  margin: 0;
-  color: var(--eindex-muted);
-  font-size: 13px;
-}
-
-.app-shell .settings-demo-data > .outline-btn {
-  display: inline-flex;
-  min-height: 38px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  margin-left: auto;
-  padding: 8px 12px;
-  border-color: #f0a4c4;
-  border-radius: 11px;
-  background: #fff;
-  color: #c50057;
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.app-shell .settings-demo-data > .outline-btn:hover {
-  background: #fff3f8;
-}
-
 .app-shell .settings-card label:not(.toggle-row) {
   width: min(100%, var(--eindex-settings-form-max));
 }
@@ -2024,23 +1961,9 @@
     width: 100%;
   }
 
-  .app-shell .settings-demo-data {
-    flex-wrap: wrap;
-    padding: 14px;
-  }
-
-  .app-shell .demo-data-copy {
-    flex: 1 1 calc(100% - 68px);
-  }
-
-  .app-shell .settings-demo-data > .outline-btn {
-    width: 100%;
-    margin-left: 0;
-  }
 }
 
-.app-shell.theme-dark .settings-notifications,
-.app-shell.theme-dark .settings-demo-data {
+.app-shell.theme-dark .settings-notifications {
   --notification-primary: #ff85b4;
   --notification-soft: #43273a;
   --notification-ink: var(--eindex-text);
@@ -2094,16 +2017,6 @@
 .app-shell.theme-dark .notification-footer-note {
   background: #302432;
   color: #e0d8e6;
-}
-
-.app-shell.theme-dark .settings-demo-data > .outline-btn {
-  border-color: #a94a76;
-  background: #292533;
-  color: #ff85b4;
-}
-
-.app-shell.theme-dark .settings-demo-data > .outline-btn:hover {
-  background: #352a3a;
 }
 
 .modal {

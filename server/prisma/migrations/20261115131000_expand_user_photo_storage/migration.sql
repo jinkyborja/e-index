@@ -1,0 +1,2 @@
+ALTER TABLE `eindex_users`
+  MODIFY COLUMN `photo` MEDIUMTEXT NOT NULL DEFAULT ('');

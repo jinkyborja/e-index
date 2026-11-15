@@ -5,11 +5,29 @@ import { z } from 'zod';
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(serverDirectory, '../../.env') });
+dotenv.config({ path: path.resolve(serverDirectory, '../../src/.env') });
+
+function booleanEnvironment(defaultValue) {
+  return z.preprocess(
+    value => typeof value === 'string' ? value.toLowerCase() : value,
+    z.enum(['true', 'false']).default(defaultValue ? 'true' : 'false')
+  ).transform(value => value === 'true');
+}
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   DATABASE_URL: z.string().min(1).optional(),
+  DB_HOST: z.string().min(1).optional(),
+  DB_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  DB_USER: z.string().min(1).optional(),
+  DB_PASSWORD: z.string().min(1).optional(),
+  DB_NAME: z.string().min(1).optional(),
+  DB_SSL: booleanEnvironment(false),
+  DB_SSL_REJECT_UNAUTHORIZED: booleanEnvironment(true),
+  BREVO_API_KEY: z.string().min(1).optional(),
+  BREVO_SENDER_EMAIL: z.string().email().optional(),
+  BREVO_SENDER_NAME: z.string().min(1).default('E-Index'),
   FRONTEND_ORIGINS: z.string().default('http://localhost:5173'),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(1),
   REMEMBER_SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30)

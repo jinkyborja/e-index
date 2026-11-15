@@ -1,12 +1,16 @@
 <script>
   import { onMount } from 'svelte';
-  import { authUser, restoreAuth, signIn, signOut, updateAuthUser } from './stores/auth.js';
+  import {
+    authUser, restoreAuth, signIn, signOut, registerTeacher,
+    requestPasswordReset, resetPassword
+  } from './stores/auth.js';
   import MiniStat from './components/MiniStat.svelte';
   import PageTitle from './components/PageTitle.svelte';
   import AdminDashboard from './components/AdminDashboard.svelte';
   import TeacherDashboard from './components/TeacherDashboard.svelte';
   import { get } from 'svelte/store';
-  import { appData, storageError, updateData, resetDemoData } from './stores/appData.js';
+  import { appData, setAppData, clearAppData } from './stores/appData.js';
+  import { apiRequest } from './utils/api.js';
   import { navigate, routeLocation, watchHistory } from './utils/router.js';
   import { dashboardPath, pathForPage, resolvePortalRoute } from './utils/routes.js';
   import { exportCsv } from './utils/export.js';
@@ -18,21 +22,27 @@
     RefreshCw, Filter, Calendar, FileText, TrendingUp, Clock, CheckCircle2,
     XCircle, AlertCircle, Eye, EyeOff, KeyRound, Sparkles, Pencil, Trash2, ChevronLeft, ChevronRight,
     ClipboardCheck, Building2, Mail, Lock, Palette, SlidersHorizontal, Sun, Moon, Camera,
-    Info, Megaphone, Database
+    Info, Megaphone
   } from 'lucide-svelte';
 
-  const storedAccount = restoreAuth();
-
-  let portal = storedAccount?.role || 'auth';
-  let currentUser = storedAccount;
+  let portal = 'auth';
+  let currentUser = null;
   $: currentUser = $authUser;
-  let teacherAuthenticated = storedAccount?.role === 'teacher';
+  let teacherAuthenticated = false;
   let authMode = 'login';
-  let authRole = storedAccount?.role || 'teacher';
+  let authRole = 'teacher';
+  let authReady = false;
+  let authInitError = '';
+  let forgotPasswordMode = false;
+  let resetPasswordMode = false;
+  let resetToken = '';
+  let forgotEmail = '';
+  let resetPasswordValue = '';
+  let resetPasswordConfirm = '';
   let loginEmail = '';
   let signupName = '';
   let signupDepartment = '';
-  let rememberMe = Boolean(storedAccount?.remember);
+  let rememberMe = false;
   let authError = '';
   let showPassword = false;
   let showCurrentSettingsPassword = false;
@@ -49,8 +59,8 @@
   let sidebarCollapsed = false;
   let searchText = '';
   let selectedTab = 'Attendance';
-  let selectedClass = 'Comp 111 - 2nd Year';
-  let selectedDate = '2026-11-14';
+  let selectedClass = '';
+  let selectedDate = new Date().toISOString().slice(0, 10);
   let showModal = false;
   let modalTitle = '';
   let notice = '';
@@ -79,7 +89,7 @@
   let rfidValue = '';
   let rfidFeedback = 'Ready to scan...';
   let notificationOpen = false;
-  let reportPeriod = '1st Semester';
+  let reportPeriod = '';
   let reportFrequency = 'Weekly';
   let auditFrom = '';
   let auditTo = '';
@@ -100,8 +110,34 @@
 
   onMount(() => {
     const stopHistory = watchHistory();
-    const unsubscribe = routeLocation.subscribe(({ pathname }) => routeLocationChanged(pathname));
+    let unsubscribe = () => {};
+    let cancelled = false;
+    const initialize = async () => {
+      let user = null;
+      try {
+        user = await restoreAuth();
+      } catch {
+        authInitError = 'Unable to connect to the portal. Check your connection and try again.';
+      }
+      if (cancelled) return;
+      if (user) {
+        portal = user.role;
+        authRole = user.role;
+        teacherAuthenticated = user.role === 'teacher';
+        try {
+          await refreshPortalData();
+        } catch (error) {
+          notify(error.message);
+        }
+      }
+      if (!cancelled) {
+        authReady = true;
+        unsubscribe = routeLocation.subscribe(({ pathname }) => routeLocationChanged(pathname));
+      }
+    };
+    void initialize();
     return () => {
+      cancelled = true;
       unsubscribe();
       stopHistory();
     };
@@ -126,6 +162,8 @@
 
   $: navItems = portal === 'admin' ? adminNav : teacherNav;
   $: isAdmin = portal === 'admin';
+  $: if (classes.length && !classes.some(item => item.name === selectedClass)) selectedClass = classes[0].name;
+  $: nameParts = (currentUser?.fullName || '').trim().split(/\s+/).filter(Boolean);
   $: teachers = $appData.teachers;
   $: students = $appData.students;
   $: classes = $appData.classes;
@@ -135,7 +173,7 @@
   $: grades = $appData.grades;
   $: filteredTeachers = teachers.filter(t => `${t.name} ${t.email} ${t.department} ${t.id}`.toLowerCase().includes(searchText.toLowerCase())
     && (teacherRoleFilter === 'All Roles' || t.role === teacherRoleFilter)
-    && (teacherStatusFilter === 'All Statuses' || (t.active === false ? 'Inactive' : t.status) === teacherStatusFilter));
+    && (teacherStatusFilter === 'All Statuses' || t.status === teacherStatusFilter));
   $: filteredStudents = students.filter(s => `${s.name} ${s.id} ${s.program}`.toLowerCase().includes(searchText.toLowerCase())
     && (studentProgramFilter === 'All Programs' || s.program === studentProgramFilter)
     && (studentYearFilter === 'All Year Levels' || s.year === studentYearFilter));
@@ -144,10 +182,22 @@
   $: teacherCount = teachers.filter(t => t.role === 'Teacher' && t.status === 'Approved' && t.active !== false).length;
   $: studentCount = students.filter(s => s.status === 'Active').length;
   $: pendingCount = registrations.filter(r => r.status === 'Pending').length;
+  $: inactiveCount = teachers.filter(t => t.status === 'Inactive').length;
+  $: rejectedCount = teachers.filter(t => t.status === 'Rejected').length;
+  $: reportPeriods = [...new Set(grades.map(item => item.period).filter(Boolean))];
+  $: if (reportPeriods.length && !reportPeriods.includes(reportPeriod)) reportPeriod = reportPeriods[0];
+  $: currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
   $: approvalRate = calculateApprovalRate(teachers, registrations);
   $: settingsKey = isAdmin ? 'admin' : `teacher:${currentUser?.email || 'default'}`;
-  $: userSettings = $appData.settings[settingsKey] || $appData.settings[isAdmin ? 'admin' : 'teacher'];
-  $: if ($storageError) notify($storageError);
+  $: userSettings = $appData.settings[settingsKey] || {
+    firstName: nameParts[0] || '',
+    lastName: nameParts.slice(1).join(' '),
+    email: currentUser?.email || '',
+    department: currentUser?.department || '',
+    photo: currentUser?.photo || '',
+    notifications: currentUser?.notificationPreferences || { updates: true, attendance: true, announcements: true },
+    appearance: currentUser?.appearance || 'Light'
+  };
   $: unreadNotifications = $appData.notifications.filter(item => item.role === (isAdmin ? 'admin' : 'teacher') && !item.read).length;
   $: selectedClassData = classes.find(c => c.name === selectedClass) || classes[0];
   $: sectionAttendance = attendance.filter(item => item.className === selectedClass && item.date === selectedDate && (attendanceSection === 'All Sections' || item.section === attendanceSection));
@@ -220,6 +270,20 @@
     lastPath = pathname;
     const user = get(authUser);
 
+    if (pathname === '/reset-password') {
+      if (user) {
+        authUser.set(null);
+        clearAppData();
+      }
+      resetToken = new URLSearchParams(window.location.search).get('token') || '';
+      resetPasswordMode = true;
+      forgotPasswordMode = false;
+      portal = 'auth';
+      teacherAuthenticated = false;
+      authMode = 'login';
+      return;
+    }
+
     if (pathname === '/login') {
       if (user) {
         portal = user.role;
@@ -263,9 +327,14 @@
     go(isAdmin ? 'Teachers' : 'Students');
     setTimeout(() => document.getElementById('page-search')?.focus(), 0);
   }
-  function switchPortal(value) {
-    if (currentUser) addAudit('LOGOUT', currentUser.name, `Switched from ${currentUser.role} portal`, currentUser.email);
-    signOut();
+  async function switchPortal(value) {
+    try {
+      if (currentUser) await signOut();
+    } catch (error) {
+      notify(error.message);
+      return;
+    }
+    clearAppData();
     portal = 'auth';
     teacherAuthenticated = false;
     authRole = value;
@@ -279,6 +348,8 @@
   }
   function applyAuthMode(value) {
     authMode = value;
+    forgotPasswordMode = false;
+    resetPasswordMode = false;
     if (value === 'signup') authRole = 'teacher';
     showPassword = false;
     loginPassword = '';
@@ -297,10 +368,44 @@
     rememberMe = false;
     setAuthMode('login');
   }
-  function logOut() {
+  async function submitForgotPassword(event) {
+    event.preventDefault();
+    authError = '';
+    try {
+      const result = await requestPasswordReset(forgotEmail.trim().toLowerCase());
+      notify(result.message);
+    } catch (error) {
+      authError = error.message;
+    }
+  }
+  async function submitResetPassword(event) {
+    event.preventDefault();
+    authError = '';
+    if (resetPasswordValue !== resetPasswordConfirm) {
+      authError = 'The passwords do not match.';
+      return;
+    }
+    try {
+      const result = await resetPassword(resetToken, resetPasswordValue);
+      resetPasswordMode = false;
+      resetToken = '';
+      resetPasswordValue = '';
+      resetPasswordConfirm = '';
+      navigate('/login', { replace: true });
+      notify(result.message);
+    } catch (error) {
+      authError = error.message;
+    }
+  }
+  async function logOut() {
     const role = isAdmin ? 'admin' : 'teacher';
-    addAudit('LOGOUT', currentUser?.name || 'System', `${role === 'admin' ? 'Administrator' : 'Teacher'} logged out`, currentUser?.email || '—');
-    signOut();
+    try {
+      await signOut();
+    } catch (error) {
+      notify(error.message);
+      return;
+    }
+    clearAppData();
     portal = 'auth';
     teacherAuthenticated = false;
     authRole = role;
@@ -309,35 +414,21 @@
     navigate('/login', { replace: true });
     notify('You have been logged out.');
   }
-  function handleTeacherAuth(event) {
+  async function handleTeacherAuth(event) {
     event.preventDefault();
+    authInitError = '';
     if (authMode === 'signup') {
       if (signupPassword !== signupPasswordConfirm) {
         authError = 'The passwords do not match.';
         return;
       }
-      const email = loginEmail.trim().toLowerCase();
-      const duplicate = $appData.accounts.some(account => account.email.toLowerCase() === email)
-        || registrations.some(registration => registration.email.toLowerCase() === email);
-      if (duplicate) {
-        authError = 'An account or registration with this email already exists.';
+      try {
+        await registerTeacher(signupName.trim(), loginEmail.trim().toLowerCase(), signupDepartment, signupPassword);
+      } catch (error) {
+        authError = authErrorMessage(error);
         return;
       }
-      const registration = {
-        id: `registration-${Date.now()}`,
-        name: signupName.trim(),
-        email,
-        department: signupDepartment,
-        password: signupPassword,
-        submitted: new Date().toLocaleDateString(),
-        status: 'Pending'
-      };
-      updateData(data => {
-        data.registrations.unshift(registration);
-        data.notifications.unshift({ id: `notification-${Date.now()}`, title: 'Teacher registration pending', detail: `${registration.name} requested teacher access.`, read: false, role: 'admin' });
-        data.audit.unshift({ type: 'REGISTER', action: registration.name, detail: 'Submitted teacher registration', target: email, time: new Date().toLocaleString() });
-      });
-      loginEmail = email;
+      loginEmail = loginEmail.trim().toLowerCase();
       signupName = '';
       signupDepartment = '';
       setAuthMode('login');
@@ -346,42 +437,61 @@
     }
 
     const email = loginEmail.trim().toLowerCase();
-    let result;
     try {
-      result = signIn(email, loginPassword, authRole, rememberMe);
+      const result = await signIn(email, loginPassword, authRole, rememberMe);
+      const account = result.account;
+      authInitError = '';
+      portal = account.role;
+      authRole = account.role;
+      teacherAuthenticated = account.role === 'teacher';
+      page = 'Dashboard';
+      loginPassword = '';
+      showPassword = false;
+      navigate(dashboardPath(account.role), { replace: true });
+      let dataLoaded = true;
+      try {
+        await refreshPortalData();
+      } catch (error) {
+        dataLoaded = false;
+        notify(error.message);
+      }
+      if (dataLoaded) notify(`Signed in to the ${account.role === 'admin' ? 'administration' : 'teacher'} portal.`);
     } catch (error) {
-      authError = 'Unable to save your session in this browser. Check storage permissions and try again.';
-      return;
+      authError = authErrorMessage(error);
     }
-
-    if (!result.account) {
-      authError = result.error === 'inactive'
-        ? 'This account is inactive or awaiting administrator approval.'
-        : result.error === 'role'
-          ? 'This account cannot access the selected portal.'
-          : 'The email or password is incorrect.';
-      return;
-    }
-    const account = result.account;
-    portal = account.role;
-    authRole = account.role;
-    teacherAuthenticated = account.role === 'teacher';
-    page = 'Dashboard';
-    loginPassword = '';
-    showPassword = false;
-    navigate(dashboardPath(account.role), { replace: true });
-    addAudit('LOGIN', account.name, `${account.role === 'admin' ? 'Administrator' : 'Teacher'} logged in`, account.email);
-    notify(`Signed in to the ${account.role === 'admin' ? 'administration' : 'teacher'} portal.`);
   }
   function updateAuthPassword(event) {
     authError = '';
     if (authMode === 'login') loginPassword = event.currentTarget.value;
     else signupPassword = event.currentTarget.value;
   }
-  function addAudit(type, action, detail, target) {
-    updateData(data => {
-      data.audit.unshift({ type, action, detail, target, time: new Date().toLocaleString() });
-    });
+  async function refreshPortalData() {
+    const data = await apiRequest('/api/data');
+    setAppData(data);
+    const key = currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
+    const settings = data.settings?.[key];
+    if (settings?.notifications) notificationPreferences = { ...settings.notifications };
+  }
+  async function mutatePortalData(path, options, successMessage) {
+    try {
+      await apiRequest(path, options);
+      await refreshPortalData();
+      if (successMessage) notify(successMessage);
+      return true;
+    } catch (error) {
+      notify(error.message);
+      return false;
+    }
+  }
+  function authErrorMessage(error) {
+    const messages = {
+      INVALID_CREDENTIALS: 'The email or password is incorrect.',
+      ROLE_MISMATCH: 'This account cannot access the selected portal.',
+      ACCOUNT_PENDING: 'This account is awaiting administrator approval.',
+      ACCOUNT_INACTIVE: 'This account is inactive.',
+      EMAIL_IN_USE: 'An account or registration with this email already exists.'
+    };
+    return messages[error.code] || error.message || 'The request could not be completed.';
   }
   function sortRecords(records) {
     if (!sortKey) return records;
@@ -477,7 +587,7 @@
     formValues = { ...fields, detail };
     showModal = true;
   }
-  function submitModalForm(event) {
+  async function submitModalForm(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     if (modalMode === 'teacher-form') {
@@ -487,117 +597,60 @@
         notify('Enter a name, numeric staff ID, and department.');
         return;
       }
-      const duplicateTeacher = teachers.some(teacher => teacher.id === staffId && teacher.id !== modalRecord?.id)
-        || teachers.some(teacher => teacher.email.toLowerCase() === email && teacher.id !== modalRecord?.id);
-      const duplicateAccount = $appData.accounts.some(account => account.email.toLowerCase() === email && account.email.toLowerCase() !== modalRecord?.email.toLowerCase());
-      if (duplicateTeacher || duplicateAccount) {
-        notify('A teacher with this staff ID or email already exists.');
-        return;
-      }
-      const teacher = {
-        id: staffId,
-        name: String(values.name).trim(),
+      const body = {
+        fullName: String(values.name).trim(),
+        staffId,
         department: String(values.department).trim(),
         email,
-        role: 'Teacher',
-        status: String(values.status),
-        active: values.status === 'Approved',
-        registered: modalRecord?.registered || new Date().toLocaleDateString(),
-        last: modalRecord?.last || 'Never'
+        status: String(values.status).toUpperCase()
       };
-      updateData(data => {
-        if (modalRecord) {
-          data.teachers = data.teachers.map(item => item.id === modalRecord.id ? teacher : item);
-          data.accounts = data.accounts.map(account => account.email === modalRecord.email ? { ...account, email, name: teacher.name, teacherId: staffId, active: teacher.active } : account);
-          if (data.settings[`teacher:${modalRecord.email}`]) {
-            data.settings[`teacher:${email}`] = { ...data.settings[`teacher:${modalRecord.email}`], email, firstName: teacher.name.split(' ')[0], lastName: teacher.name.split(' ').slice(1).join(' '), department: teacher.department };
-            if (email !== modalRecord.email) delete data.settings[`teacher:${modalRecord.email}`];
-          }
-        } else {
-          data.teachers.unshift(teacher);
-          data.accounts.push({ email, password: 'Teacher123!', role: 'teacher', name: teacher.name, teacherId: staffId, active: teacher.active });
-        }
-        data.audit.unshift({ type: modalRecord ? 'UPDATE' : 'CREATE', action: currentUser?.name || 'Admin', detail: `${modalRecord ? 'Updated' : 'Added'} teacher account for ${teacher.name}`, target: email, time: new Date().toLocaleString() });
-      });
-      closeModal();
-      notify(modalRecord ? 'Teacher account updated.' : 'Teacher account added. Demo password: Teacher123!');
+      const identifier = modalRecord?.accountId || modalRecord?.id;
+      const saved = await mutatePortalData(
+        modalRecord ? `/api/data/teachers/${encodeURIComponent(identifier)}` : '/api/data/teachers',
+        { method: modalRecord ? 'PATCH' : 'POST', body },
+        modalRecord ? 'Teacher account updated.' : 'Teacher account added. A password reset email was sent.'
+      );
+      if (saved) closeModal();
       return;
     }
     notify('This form is not available.');
   }
-  function runConfirmation() {
+  async function runConfirmation() {
     if (!confirmation) return;
     const { type, record } = confirmation;
-    if (type === 'delete-teacher') {
-      updateData(data => {
-        data.teachers = data.teachers.filter(item => item.id !== record.id);
-        data.accounts = data.accounts.filter(account => account.teacherId !== record.id);
-        data.audit.unshift({ type: 'DELETE', action: currentUser?.name || 'Admin', detail: `Deleted teacher account for ${record.name}`, target: record.email, time: new Date().toLocaleString() });
-      });
-      selectedRows = selectedRows.filter(id => id !== record.id);
-      closeModal();
-      notify('Teacher account deleted.');
-    } else if (type === 'teacher-status') {
-      const active = !record.active;
-      updateData(data => {
-        data.teachers = data.teachers.map(item => item.id === record.id ? { ...item, active } : item);
-        data.accounts = data.accounts.map(account => account.teacherId === record.id ? { ...account, active } : account);
-        data.audit.unshift({ type: 'UPDATE', action: currentUser?.name || 'Admin', detail: `${active ? 'Activated' : 'Deactivated'} ${record.name}'s account`, target: record.email, time: new Date().toLocaleString() });
-      });
-      closeModal();
-      notify(`Teacher account ${active ? 'activated' : 'deactivated'}.`);
+    if (type === 'delete-teacher' || type === 'teacher-status') {
+      const active = type === 'teacher-status' && record.status !== 'Approved';
+      const saved = await mutatePortalData(
+        `/api/data/teachers/${encodeURIComponent(record.accountId || record.id)}/status`,
+        { method: 'PATCH', body: { status: active ? 'APPROVED' : 'INACTIVE' } },
+        type === 'delete-teacher' ? 'Teacher account deactivated; its records were retained.' : `Teacher account ${active ? 'activated' : 'deactivated'}.`
+      );
+      if (saved) {
+        if (type === 'delete-teacher') selectedRows = selectedRows.filter(id => id !== record.id);
+        closeModal();
+      }
     } else if (type === 'attendance-status') {
-      saveAttendanceStatus(record, formValues.status);
-      closeModal();
-      notify(`${record.name} marked ${formValues.status.toLowerCase()}.`);
+      if (await saveAttendanceStatus(record, formValues.status)) closeModal();
     } else if (type === 'attendance-remark') {
-      saveAttendanceRemark(record, formValues.remarks);
-      closeModal();
-      notify('Attendance remarks updated.');
+      if (await saveAttendanceRemark(record, formValues.remarks)) closeModal();
     } else if (type === 'bulk-delete' || type === 'bulk-activate' || type === 'bulk-deactivate') {
-      const ids = record;
-      updateData(data => {
-        if (type === 'bulk-delete') {
-          data.teachers = data.teachers.filter(item => !ids.includes(item.id));
-          data.accounts = data.accounts.filter(account => !ids.includes(account.teacherId));
-        } else {
-          const active = type === 'bulk-activate';
-          data.teachers = data.teachers.map(item => ids.includes(item.id) ? { ...item, active } : item);
-          data.accounts = data.accounts.map(account => ids.includes(account.teacherId) ? { ...account, active } : account);
-        }
-        data.audit.unshift({ type: type === 'bulk-delete' ? 'DELETE' : 'UPDATE', action: currentUser?.name || 'Admin', detail: `${type.replace('bulk-', '')} applied to ${ids.length} teacher account(s)`, target: ids.join(', '), time: new Date().toLocaleString() });
-      });
-      selectedRows = selectedRows.filter(id => !ids.includes(id));
-      closeModal();
-      notify(`${ids.length} selected account(s) updated.`);
+      const identifiers = teachers.filter(item => record.includes(item.id)).map(item => item.accountId || item.id);
+      const status = type === 'bulk-activate' ? 'APPROVED' : 'INACTIVE';
+      const saved = await mutatePortalData('/api/data/teacher-bulk-status', {
+        method: 'PATCH',
+        body: { identifiers, status }
+      }, `${record.length} selected account(s) updated.`);
+      if (saved) {
+        selectedRows = selectedRows.filter(id => !record.includes(id));
+        closeModal();
+      }
     } else if (type === 'registration-approve' || type === 'registration-reject') {
-      const status = type === 'registration-approve' ? 'Approved' : 'Rejected';
-      updateData(data => {
-        data.registrations = data.registrations.map(item => item.id === record.id ? { ...item, status } : item);
-        if (status === 'Approved') {
-          const staffId = String(Date.now()).slice(-6);
-          data.teachers.unshift({ id: staffId, name: record.name, department: record.department, email: record.email, role: 'Teacher', status: 'Approved', active: true, registered: record.submitted, last: 'Never' });
-          data.accounts.push({ email: record.email, password: record.password, role: 'teacher', name: record.name, teacherId: staffId, active: true });
-            const [firstName, ...lastName] = record.name.split(' ');
-            data.settings[`teacher:${record.email}`] = { firstName, lastName: lastName.join(' '), email: record.email, department: record.department, photo: '', notifications: { updates: true, attendance: true, announcements: true }, appearance: 'Light' };
-          data.notifications.unshift({ id: `notification-${Date.now()}`, title: 'Teacher account approved', detail: 'Your teacher account is ready to use.', read: false, role: 'teacher' });
-        }
-        data.notifications.unshift({ id: `notification-${Date.now()}-admin`, title: `Registration ${status.toLowerCase()}`, detail: `${record.name}'s registration was ${status.toLowerCase()}.`, read: false, role: 'admin' });
-        data.audit.unshift({ type: status.toUpperCase(), action: currentUser?.name || 'Admin', detail: `${status} teacher registration for ${record.name}`, target: record.email, time: new Date().toLocaleString() });
-      });
-      closeModal();
-      notify(`Registration ${status.toLowerCase()}.`);
-    } else if (type === 'reset-data') {
-      resetDemoData();
-      signOut();
-      portal = 'auth';
-      teacherAuthenticated = false;
-      authRole = 'admin';
-      rememberMe = false;
-      navigate('/login', { replace: true });
-      closeModal();
-      notify('Demo data has been reset. Sign in again to continue.');
-      return;
+      const status = type === 'registration-approve' ? 'APPROVED' : 'REJECTED';
+      const saved = await mutatePortalData(`/api/data/registrations/${encodeURIComponent(record.id)}`, {
+        method: 'PATCH',
+        body: { status }
+      }, `Registration ${status.toLowerCase()}.`);
+      if (saved) closeModal();
     }
   }
   function startRegistrationDecision(record, approve) {
@@ -608,18 +661,17 @@
       `Are you sure you want to ${approve ? 'approve' : 'reject'} ${record.name}'s teacher registration?`
     );
   }
-  function saveAttendanceStatus(record, status) {
-    updateData(data => {
-      data.attendance = data.attendance.map(item => item.id === record.id && item.className === record.className && item.date === record.date
-        ? { ...item, status, time: status === 'Absent' ? '—' : (item.time === '—' ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : item.time) }
-        : item);
-      data.audit.unshift({ type: 'ATTENDANCE', action: currentUser?.name || 'Teacher', detail: `Updated ${record.name} to ${status}`, target: record.id, time: new Date().toLocaleString() });
-    });
+  async function saveAttendanceStatus(record, status) {
+    return mutatePortalData(`/api/data/attendance/${encodeURIComponent(record.attendanceId)}`, {
+      method: 'PATCH',
+      body: { status: status.toUpperCase() }
+    }, `${record.name} marked ${status.toLowerCase()}.`);
   }
-  function saveAttendanceRemark(record, remarks) {
-    updateData(data => {
-      data.attendance = data.attendance.map(item => item.id === record.id && item.className === record.className && item.date === record.date ? { ...item, remarks } : item);
-    });
+  async function saveAttendanceRemark(record, remarks) {
+    return mutatePortalData(`/api/data/attendance/${encodeURIComponent(record.attendanceId)}`, {
+      method: 'PATCH',
+      body: { remarks }
+    }, 'Attendance remarks updated.');
   }
   function requestAttendanceStatus(record, status, event) {
     askConfirmation('attendance-status', record, 'Confirm attendance update', `Change ${record.name}'s status from ${record.status} to ${status}?`, { status });
@@ -629,7 +681,7 @@
     askConfirmation('attendance-remark', record, 'Confirm remarks update', `Save the attendance remarks for ${record.name}?`, { remarks });
     event.currentTarget.value = record.remarks || '';
   }
-  function simulateRfidScan(event) {
+  async function simulateRfidScan(event) {
     event.preventDefault();
     const lookup = rfidValue.trim().toLowerCase();
     const student = students.find(item => String(item.id || '').toLowerCase() === lookup || String(item.rfid || '').toLowerCase() === lookup);
@@ -644,27 +696,19 @@
       return;
     }
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    updateData(data => {
-      if (existing) {
-        data.attendance = data.attendance.map(item => item.id === student.id && item.className === selectedClass && item.date === selectedDate ? { ...item, status: 'Present', time } : item);
-      } else {
-        data.attendance.unshift({ ...student, className: selectedClass, date: selectedDate, status: 'Present', time, remarks: '' });
-      }
-      data.audit.unshift({ type: 'ATTENDANCE', action: currentUser?.name || 'Teacher', detail: `RFID scan marked ${student.name} present`, target: student.id, time: new Date().toLocaleString() });
+    const saved = await mutatePortalData('/api/data/attendance/scan', {
+      method: 'POST',
+      body: { studentId: student.id, sectionId: student.sectionId, date: selectedDate, time }
     });
+    if (!saved) return;
     rfidFeedback = `${student.name} marked present at ${time}.`;
     rfidValue = '';
   }
-  function markNotificationRead(id) {
-    updateData(data => {
-      data.notifications = data.notifications.map(item => item.id === id ? { ...item, read: true } : item);
-    });
+  async function markNotificationRead(id) {
+    await mutatePortalData(`/api/data/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
   }
-  function markAllNotificationsRead() {
-    const role = isAdmin ? 'admin' : 'teacher';
-    updateData(data => {
-      data.notifications = data.notifications.map(item => item.role === role ? { ...item, read: true } : item);
-    });
+  async function markAllNotificationsRead() {
+    await mutatePortalData('/api/data/notifications/read-all', { method: 'PATCH' });
   }
   function loadSettingsDraft() {
     const settings = userSettings;
@@ -672,39 +716,37 @@
     profileEdited = false;
     notificationPreferences = { ...settings.notifications };
   }
-  function saveProfile(event) {
+  async function saveProfile(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const email = String(values.email).trim().toLowerCase();
-    if ($appData.accounts.some(account => account.email.toLowerCase() === email && account.role === (isAdmin ? 'admin' : 'teacher') && account.email !== userSettings.email)) {
-      notify('That email is already in use.');
-      return;
-    }
-    const name = `${String(values.firstName).trim()} ${String(values.lastName).trim()}`.trim();
-    updateData(data => {
-      const updatedSettings = { ...userSettings, firstName: String(values.firstName).trim(), lastName: String(values.lastName).trim(), email, department: String(values.department).trim(), photo: profilePhoto };
-      const nextSettingsKey = isAdmin ? 'admin' : `teacher:${email}`;
-      data.settings[nextSettingsKey] = updatedSettings;
-      if (!isAdmin && settingsKey !== nextSettingsKey) delete data.settings[settingsKey];
-      data.accounts = data.accounts.map(account => account.role === (isAdmin ? 'admin' : 'teacher') && account.email === userSettings.email ? { ...account, email, name } : account);
-      data.teachers = data.teachers.map(teacher => teacher.email === userSettings.email ? { ...teacher, email, name, department: String(values.department).trim() } : teacher);
-      data.audit.unshift({ type: 'UPDATE', action: currentUser?.name || name, detail: 'Updated account profile', target: email, time: new Date().toLocaleString() });
-    });
-    profileEdited = false;
-    const updatedUser = { ...currentUser, email, name };
     try {
-      updateAuthUser(updatedUser);
+      const result = await apiRequest('/api/data/profile', {
+        method: 'PATCH',
+        body: {
+          fullName: `${String(values.firstName).trim()} ${String(values.lastName).trim()}`.trim(),
+          email,
+          department: String(values.department).trim(),
+          photo: profilePhoto || ''
+        }
+      });
+      authUser.set({ ...currentUser, ...result.user });
+      profileEdited = false;
+      await refreshPortalData();
+      notify('Profile changes saved.');
     } catch (error) {
-      notify('Profile saved, but the updated session could not be saved.');
-      return;
+      notify(error.message);
     }
-    notify('Profile changes saved.');
   }
   function handlePhotoChange(event) {
     const file = event.currentTarget.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       notify('Choose an image file for your profile photo.');
+      return;
+    }
+    if (file.size > 2_500_000) {
+      notify('Choose an image smaller than 2.5 MB.');
       return;
     }
     const reader = new FileReader();
@@ -715,24 +757,23 @@
     reader.onerror = () => notify('The selected profile image could not be read.');
     reader.readAsDataURL(file);
   }
-  function changePassword(event) {
+  async function changePassword(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     if (values.newPassword !== values.confirmPassword) {
       notify('The new passwords do not match.');
       return;
     }
-    const role = isAdmin ? 'admin' : 'teacher';
-    const account = $appData.accounts.find(item => item.email === currentUser.email && item.role === role);
-    if (!account || account.password !== values.currentPassword) {
-      notify('The current password is incorrect.');
+    try {
+      const result = await apiRequest('/api/auth/change-password', {
+        method: 'POST',
+        body: { currentPassword: values.currentPassword, newPassword: values.newPassword }
+      });
+      notify(result.message);
+    } catch (error) {
+      notify(error.message);
       return;
     }
-    updateData(data => {
-      data.accounts = data.accounts.map(item => item.email === account.email && item.role === role ? { ...item, password: values.newPassword } : item);
-      data.audit.unshift({ type: 'UPDATE', action: currentUser.name, detail: 'Changed account password', target: currentUser.email, time: new Date().toLocaleString() });
-    });
-    notify('Password updated.');
     event.currentTarget.reset();
     currentPasswordValue = '';
     newPasswordValue = '';
@@ -750,24 +791,17 @@
     showNewSettingsPassword = false;
     showConfirmSettingsPassword = false;
   }
-  function saveNotificationPreferences() {
-    updateData(data => {
-      data.settings[settingsKey] = {
-        ...(data.settings[settingsKey] || userSettings),
-        notifications: { ...notificationPreferences }
-      };
-      data.audit.unshift({ type: 'UPDATE', action: currentUser?.name || 'System', detail: 'Updated notification preferences', target: currentUser?.email || '—', time: new Date().toLocaleString() });
-    });
-    notify('Notification preferences saved.');
+  async function saveNotificationPreferences() {
+    await mutatePortalData('/api/data/preferences', {
+      method: 'PATCH',
+      body: { notificationPreferences, appearance: userSettings.appearance }
+    }, 'Notification preferences saved.');
   }
-  function saveAppearance(value) {
-    updateData(data => {
-      data.settings[settingsKey] = {
-        ...(data.settings[settingsKey] || userSettings),
-        appearance: value
-      };
-    });
-    notify(`${value} appearance saved.`);
+  async function saveAppearance(value) {
+    await mutatePortalData('/api/data/preferences', {
+      method: 'PATCH',
+      body: { notificationPreferences, appearance: value }
+    }, `${value} appearance saved.`);
   }
   function notify(message) {
     notice = message;
@@ -816,45 +850,68 @@
         <div class="auth-card">
           <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
           <div class="auth-heading">
-            <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-            <p>{authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
+            <h2>{resetPasswordMode ? 'Choose a new password' : forgotPasswordMode ? 'Reset your password' : authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
           </div>
-          <div class="auth-tabs" role="tablist" aria-label="Teacher account access">
-            <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
-            {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
-          </div>
+          {#if !forgotPasswordMode && !resetPasswordMode}
+            <div class="auth-tabs" role="tablist" aria-label="Teacher account access">
+              <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
+              {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
+            </div>
+          {/if}
 
-          <form class:signup-form={authMode === 'signup'} class="auth-form" onsubmit={handleTeacherAuth}>
-            {#if authMode === 'signup'}
-              <label>Full name
-                <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" placeholder="e.g. Alex Santos" bind:value={signupName} required/></span>
+          {#if forgotPasswordMode}
+            <form class="auth-form" onsubmit={submitForgotPassword}>
+              <label>School email
+                <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" bind:value={forgotEmail} placeholder="you@school.edu.ph" required/></span>
               </label>
-            {/if}
-            <label>School email
-              <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" name="email" placeholder="you@school.edu.ph" bind:value={loginEmail} required/></span>
-            </label>
-            {#if authMode === 'signup'}
-              <label>Department
-                <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your department</option><option>Computer Studies</option><option>Education</option><option>Arts and Sciences</option><option>Business</option><option>Other</option></select><ChevronDown size={15}/></span>
+              {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
+              <button class="auth-submit" type="submit">Send reset link <ArrowRight size={17}/></button>
+              <button class="auth-text-button" type="button" onclick={() => { forgotPasswordMode = false; authError = ''; }}>Back to sign in</button>
+            </form>
+          {:else if resetPasswordMode}
+            <form class="auth-form" onsubmit={submitResetPassword}>
+              <label>New password
+                <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" minlength="8" bind:value={resetPasswordValue} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
               </label>
-            {/if}
-            <label>Password
-              <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
-            </label>
-            {#if authMode === 'signup'}
-              <label>Confirm password
-                <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" name="password-confirm" placeholder="Re-enter your password" minlength="8" bind:value={signupPasswordConfirm} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
+              <label>Confirm new password
+                <span class="auth-input-wrap"><Lock size={16}/><input type="password" autocomplete="new-password" minlength="8" bind:value={resetPasswordConfirm} required/></span>
               </label>
-            {/if}
-            {#if authMode === 'login'}
-              <div class="auth-form-options"><label class="auth-remember"><input type="checkbox" bind:checked={rememberMe}/> Remember me</label><button type="button" class="auth-text-button" onclick={() => notify('Password reset is not available in this frontend demo.')}>Forgot password?</button></div>
-            {/if}
-            {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
-            <button class="auth-submit" type="submit">{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
-          </form>
-
-          {#if authMode === 'signup'}
-            <div class="auth-demo-note"><ShieldCheck size={16}/><span><strong>Frontend demo</strong> — registration is saved locally and waits for administrator approval.</span></div>
+              {#if !resetToken}<p class="auth-error" role="alert">This password reset link is invalid or has expired.</p>{/if}
+              {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
+              <button class="auth-submit" type="submit" disabled={!resetToken}>Save new password <ArrowRight size={17}/></button>
+              <button class="auth-text-button" type="button" onclick={() => { resetPasswordMode = false; navigate('/login', { replace: true }); }}>Back to sign in</button>
+            </form>
+          {:else}
+            <form class:signup-form={authMode === 'signup'} class="auth-form" onsubmit={handleTeacherAuth}>
+              {#if authMode === 'signup'}
+                <label>Full name
+                  <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" placeholder="e.g. Alex Santos" bind:value={signupName} required/></span>
+                </label>
+              {/if}
+              <label>School email
+                <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" name="email" placeholder="you@school.edu.ph" bind:value={loginEmail} required/></span>
+              </label>
+              {#if authMode === 'signup'}
+                <label>Department
+                  <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your department</option><option>Computer Studies</option><option>Education</option><option>Arts and Sciences</option><option>Business</option><option>Other</option></select><ChevronDown size={15}/></span>
+                </label>
+              {/if}
+              <label>Password
+                <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
+              </label>
+              {#if authMode === 'signup'}
+                <label>Confirm password
+                  <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" name="password-confirm" placeholder="Re-enter your password" minlength="8" bind:value={signupPasswordConfirm} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
+                </label>
+              {/if}
+              {#if authMode === 'login'}
+                <div class="auth-form-options"><label class="auth-remember"><input type="checkbox" bind:checked={rememberMe}/> Remember me</label><button type="button" class="auth-text-button" onclick={() => { forgotEmail = loginEmail; forgotPasswordMode = true; authError = ''; }}>Forgot password?</button></div>
+              {/if}
+              {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
+              {#if authInitError}<p class="auth-error" role="alert">{authInitError}</p>{/if}
+              <button class="auth-submit" type="submit" disabled={!authReady}>{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
+            </form>
           {/if}
         </div>
       </div>
@@ -893,7 +950,7 @@
       <button class="icon-btn menu-toggle" onclick={() => sidebarOpen = true}><Menu size={20}/></button>
       <div class="breadcrumbs"><span>{isAdmin ? 'Administration' : 'Teacher Portal'}</span><b>/</b><strong>{page}</strong></div>
       <div class="top-actions">
-        <div class="semester-select"><CalendarDays size={14}/> AY 2026-2027 · 1st Semester <ChevronDown size={13}/></div>
+        <div class="semester-select"><CalendarDays size={14}/> AY {currentAcademicYear}<ChevronDown size={13}/></div>
         <button class="icon-btn search-top" aria-label="Search records" onclick={focusPageSearch}><Search size={18}/></button>
         <div class="notification-wrap"><button class="icon-btn notification-btn" aria-label="Notifications" aria-expanded={notificationOpen} onclick={() => notificationOpen = !notificationOpen}><Bell size={18}/>{#if unreadNotifications}<i></i>{/if}</button>
           {#if notificationOpen}<section class="notification-popover"><div class="notification-popover-heading"><strong>Notifications</strong><button onclick={markAllNotificationsRead}>Mark all read</button></div>{#each $appData.notifications.filter(item => item.role === (isAdmin ? 'admin' : 'teacher')).slice(0, 6) as item}<button class:unread={!item.read} class="notification-row" onclick={() => markNotificationRead(item.id)}><span class="notification-dot"></span><span><strong>{item.title}</strong><small>{item.detail}</small></span></button>{:else}<p class="notification-empty">You're all caught up.</p>{/each}</section>{/if}
@@ -910,6 +967,8 @@
           studentCount={studentCount}
           pendingCount={pendingCount}
           approvalRate={approvalRate}
+          inactiveCount={inactiveCount}
+          rejectedCount={rejectedCount}
           onNavigate={go}
         />
       {:else if page === 'Dashboard' && !isAdmin}
@@ -927,9 +986,37 @@
       {:else if page === 'Teachers' && isAdmin}
         <PageTitle icon={Users} title="Teacher Accounts" subtitle="Review teacher access and manage account status." action="Add Teacher" onAction={() => openTeacherForm()}/>
         <section class="panel table-panel">
-          <div class="toolbar"><div class="search-field"><Search size={16}/><input id="page-search" bind:value={searchText} oninput={() => currentPage = 1} placeholder="Search name, email, or staff ID..."/></div><select bind:value={teacherRoleFilter} onchange={() => currentPage = 1}><option>All Roles</option><option>Teacher</option><option>Admin</option></select><select bind:value={teacherStatusFilter} onchange={() => currentPage = 1}><option>All Statuses</option><option>Approved</option><option>Pending</option><option>Inactive</option></select><button class="outline-btn" onclick={() => exportRecords('teachers.csv', filteredTeachers)}>Export CSV</button><select aria-label="Bulk actions" onchange={event => { if (event.currentTarget.value === 'activate' || event.currentTarget.value === 'deactivate') { if (selectedRows.length) askConfirmation(`bulk-${event.currentTarget.value}`, selectedRows, `${event.currentTarget.value === 'activate' ? 'Activate' : 'Deactivate'} selected accounts`, `Apply this action to ${selectedRows.length} selected account(s)?`); else notify('Select teacher accounts before choosing a bulk action.'); } else if (event.currentTarget.value === 'delete') { if (selectedRows.length) askConfirmation('bulk-delete', selectedRows, 'Delete selected accounts', `Permanently remove ${selectedRows.length} selected account(s)?`); else notify('Select teacher accounts before choosing a bulk action.'); } event.currentTarget.value = ''; }}><option value="">Bulk Actions</option><option value="activate">Activate</option><option value="deactivate">Deactivate</option><option value="delete">Delete</option></select></div>
+          <div class="toolbar">
+            <div class="search-field"><Search size={16}/><input id="page-search" bind:value={searchText} oninput={() => currentPage = 1} placeholder="Search name, email, or staff ID..."/></div>
+            <select bind:value={teacherRoleFilter} onchange={() => currentPage = 1}><option>All Roles</option><option>Teacher</option></select>
+            <select bind:value={teacherStatusFilter} onchange={() => currentPage = 1}><option>All Statuses</option><option>Approved</option><option>Pending</option><option>Inactive</option><option>Rejected</option></select>
+            <button class="outline-btn" onclick={() => exportRecords('teachers.csv', filteredTeachers)}>Export CSV</button>
+            <select aria-label="Bulk actions" onchange={event => {
+              const action = event.currentTarget.value;
+              if (['activate', 'deactivate', 'delete'].includes(action)) {
+                if (selectedRows.length) askConfirmation(action === 'delete' ? 'bulk-delete' : `bulk-${action}`, selectedRows, `${action === 'activate' ? 'Activate' : 'Deactivate'} selected accounts`, `Update ${selectedRows.length} selected account(s)? Existing records will be retained.`);
+                else notify('Select teacher accounts before choosing a bulk action.');
+              }
+              event.currentTarget.value = '';
+            }}>
+              <option value="">Bulk Actions</option><option value="activate">Activate</option><option value="deactivate">Deactivate</option><option value="delete">Deactivate and retain records</option>
+            </select>
+          </div>
           <div class="table-scroll"><table><thead><tr><th><input type="checkbox" checked={visibleTeachers.length > 0 && visibleTeachers.every(t => selectedRows.includes(t.id))} onchange={() => toggleAllRows(visibleTeachers)} aria-label="Select all visible teachers"/></th><th><button class="sort-button" onclick={() => sortBy('name')}>Name ↕</button></th><th><button class="sort-button" onclick={() => sortBy('id')}>Staff ID ↕</button></th><th><button class="sort-button" onclick={() => sortBy('department')}>Department ↕</button></th><th><button class="sort-button" onclick={() => sortBy('email')}>Email ↕</button></th><th>Role</th><th><button class="sort-button" onclick={() => sortBy('status')}>Status ↕</button></th><th><button class="sort-button" onclick={() => sortBy('registered')}>Registered ↕</button></th><th>Last Login</th><th>Actions</th></tr></thead><tbody>
-            {#each visibleTeachers as t}<tr><td><input type="checkbox" checked={selectedRows.includes(t.id)} onchange={() => toggleRow(t.id)} aria-label={`Select ${t.name}`}/></td><td><button class="table-link" onclick={() => openTeacherDetails(t)}><div class="name-cell"><span class="initial-badge">{t.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{t.name}</strong></div></button></td><td>{t.id}</td><td>{t.department}</td><td>{t.email}</td><td><span class="role-pill">{t.role}</span></td><td><span class={`status ${t.status === 'Approved' ? 'approved' : 'pending'}`}>{t.active === false ? 'Inactive' : t.status}</span></td><td>{t.registered}</td><td>{t.last}</td><td><div class="row-actions"><button class="icon-btn row-action" aria-label={`View ${t.name}`} onclick={() => openTeacherDetails(t)}><Eye size={16}/></button><button class="icon-btn row-action" aria-label={`Edit ${t.name}`} onclick={() => openTeacherForm(t)}><Pencil size={15}/></button><button class="icon-btn row-action" aria-label={`${t.active === false ? 'Activate' : 'Deactivate'} ${t.name}`} onclick={() => askConfirmation('teacher-status', t, `${t.active === false ? 'Activate' : 'Deactivate'} account`, `${t.active === false ? 'Activate' : 'Deactivate'} ${t.name}'s account?`)}><RefreshCw size={15}/></button><button class="icon-btn row-action" aria-label={`Delete ${t.name}`} onclick={() => askConfirmation('delete-teacher', t, 'Delete teacher account', `Delete ${t.name}'s account? This cannot be undone.`)}><Trash2 size={15}/></button></div></td></tr>{:else}<tr><td colspan="10" class="empty-table">No teacher accounts match these filters.</td></tr>{/each}
+            {#each visibleTeachers as t}
+              <tr>
+                <td><input type="checkbox" checked={selectedRows.includes(t.id)} onchange={() => toggleRow(t.id)} aria-label={`Select ${t.name}`}/></td>
+                <td><button class="table-link" onclick={() => openTeacherDetails(t)}><div class="name-cell"><span class="initial-badge">{t.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{t.name}</strong></div></button></td>
+                <td>{t.id}</td><td>{t.department}</td><td>{t.email}</td><td><span class="role-pill">{t.role}</span></td>
+                <td><span class={`status ${t.status === 'Approved' ? 'approved' : 'pending'}`}>{t.status}</span></td><td>{t.registered}</td><td>{t.last}</td>
+                <td><div class="row-actions">
+                  <button class="icon-btn row-action" aria-label={`View ${t.name}`} onclick={() => openTeacherDetails(t)}><Eye size={16}/></button>
+                  <button class="icon-btn row-action" aria-label={`Edit ${t.name}`} onclick={() => openTeacherForm(t)}><Pencil size={15}/></button>
+                  <button class="icon-btn row-action" aria-label={`${t.status === 'Approved' ? 'Deactivate' : 'Activate'} ${t.name}`} onclick={() => askConfirmation('teacher-status', t, `${t.status === 'Approved' ? 'Deactivate' : 'Activate'} account`, `${t.status === 'Approved' ? 'Deactivate' : 'Activate'} ${t.name}'s account?`)}><RefreshCw size={15}/></button>
+                  <button class="icon-btn row-action" aria-label={`Deactivate ${t.name} and retain records`} onclick={() => askConfirmation('delete-teacher', t, 'Deactivate teacher account', `Deactivate ${t.name}'s account? Existing records will be retained.`)}><Trash2 size={15}/></button>
+                </div></td>
+              </tr>
+            {:else}<tr><td colspan="10" class="empty-table">No teacher accounts match these filters.</td></tr>{/each}
           </tbody></table></div><div class="table-footer"><span>Rows per page <select value={pageSize} onchange={changePageSize}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></span><span>Showing {filteredTeachers.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filteredTeachers.length)} of {filteredTeachers.length}</span><button class="pagination" disabled={currentPage === 1} onclick={() => currentPage -= 1}><ChevronLeft size={14}/></button><span>Page {currentPage} of {Math.max(1, Math.ceil(filteredTeachers.length / pageSize))}</span><button class="pagination" disabled={currentPage >= Math.ceil(filteredTeachers.length / pageSize)} onclick={() => currentPage += 1}><ChevronRight size={14}/></button></div>
         </section>
 
@@ -962,7 +1049,7 @@
       {:else if page === 'Reports'}
         <PageTitle icon={FileBarChart} title="Reports & Analytics" subtitle="View reports and analytics for your classes." action="Export Report" onAction={() => exportRecords(`${selectedTab.toLowerCase().replaceAll(' ', '-')}-report.csv`, selectedTab === 'Grades' || selectedTab === 'Student Performance' ? reportGrades : reportAttendance)}/>
         <div class="tabs report-tabs"><button class:chosen={selectedTab === 'Attendance'} onclick={() => selectedTab = 'Attendance'}>Attendance</button><button class:chosen={selectedTab === 'Grades'} onclick={() => selectedTab = 'Grades'}>Grades</button><button class:chosen={selectedTab === 'Student Performance'} onclick={() => selectedTab = 'Student Performance'}>Student Performance</button></div>
-        <section class="panel report-filters"><label>Class<select bind:value={selectedClass}>{#each classes as classItem}<option>{classItem.name}</option>{/each}</select></label><label>Grading period<select bind:value={reportPeriod}><option>1st Semester</option><option>2nd Semester</option></select></label><label>Trend interval<select bind:value={reportFrequency}><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label></section>
+        <section class="panel report-filters"><label>Class<select bind:value={selectedClass}>{#each classes as classItem}<option>{classItem.name}</option>{:else}<option value="">No classes available</option>{/each}</select></label><label>Grading period<select bind:value={reportPeriod}>{#each reportPeriods as period}<option>{period}</option>{:else}<option value="">No grading periods</option>{/each}</select></label><label>Trend interval<select bind:value={reportFrequency}><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label></section>
         {#if selectedTab === 'Attendance'}<div class="report-grid"><section class="panel chart-panel"><h3>Attendance Overview</h3><div class="donut-wrap"><div class="donut report-donut"><div><strong>{reportAttendance.length ? Math.round(reportAttendance.filter(item => item.status === 'Present').length / reportAttendance.length * 100) : 0}%</strong></div></div><div class="legend"><p><i class="dot plum"></i>Present <b>{reportAttendance.length ? Math.round(reportAttendance.filter(item => item.status === 'Present').length / reportAttendance.length * 100) : 0}%</b></p><p><i class="dot rose"></i>Absent <b>{reportAttendance.length ? Math.round(reportAttendance.filter(item => item.status === 'Absent').length / reportAttendance.length * 100) : 0}%</b></p><p><i class="dot green"></i>Late <b>{reportAttendance.length ? Math.round(reportAttendance.filter(item => item.status === 'Late').length / reportAttendance.length * 100) : 0}%</b></p></div></div></section><section class="panel chart-panel"><h3>Attendance by {reportFrequency.toLowerCase()}</h3>{#each attendanceTrend as group}<div class="report-data-row"><span>{group.label} · {group.total} records</span><strong>{Math.round(group.present / group.total * 100)}% present</strong></div>{:else}<p class="empty-inline">No attendance records are available for this class.</p>{/each}</section></div>
         {:else}<section class="panel table-panel"><div class="panel-heading"><h3>{selectedTab === 'Grades' ? 'Academic Records' : 'Student Performance'}</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Class / Section</th><th>Quizzes</th><th>Examinations</th><th>Activities</th><th>Assessments</th><th>Average</th></tr></thead><tbody>{#each reportGrades as grade}<tr><td>{students.find(student => student.id === grade.studentId)?.name || grade.studentId}</td><td>{grade.className} / {grade.section}</td><td>{grade.quizzes}</td><td>{grade.examinations}</td><td>{grade.activities}</td><td>{grade.assessments}</td><td>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}%</td></tr>{:else}<tr><td colspan="7" class="empty-table">No academic records are available for this class and grading period.</td></tr>{/each}</tbody></table></div></section>{/if}
 
@@ -1215,14 +1302,6 @@
                   <button class="primary" onclick={saveNotificationPreferences}><Check size={16}/> Save Preferences</button>
                 </div>
               </section>
-              <section class="panel settings-card settings-demo-data">
-                <span class="demo-data-icon" aria-hidden="true"><Database size={22}/></span>
-                <div class="demo-data-copy">
-                  <h3>Demo Data</h3>
-                  <p>Restore the original sample records and accounts for testing.</p>
-                </div>
-                <button class="outline-btn" onclick={() => askConfirmation('reset-data', null, 'Reset demo data', 'This replaces all locally saved E-Index demo records and accounts with the original sample data.')}><RefreshCw size={15}/> Reset Demo Data</button>
-              </section>
             {/if}
           </div>
         </div>
@@ -1238,11 +1317,11 @@
 
 {#if notice}<div class="toast"><CheckCircle2 size={17}/>{notice}</div>{/if}
 {#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeModal()}><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" onclick={closeModal}><X size={18}/></button><div class="modal-symbol"><Users size={22}/></div><h2 id="modal-heading">{modalTitle}</h2>
-  {#if modalMode === 'teacher-form'}<p>Teacher access is simulated locally. New accounts use the sample password Teacher123!.</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>Department<input name="department" value={formValues.department} required/></label><label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
+  {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>Department<input name="department" value={formValues.department} required/></label><label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
   {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Cancel</button><button class="primary danger-action" onclick={runConfirmation}>Confirm</button></div>
-  {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.active === false ? 'Inactive' : modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
+  {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
   {:else if modalMode === 'student-view'}<div class="record-details"><p><strong>Student ID</strong><span>{modalRecord.id}</span></p><p><strong>Program / Year</strong><span>{modalRecord.program} · {modalRecord.year}</span></p><p><strong>Enrollment</strong><span>{modalRecord.status}</span></p><p><strong>Class / Section</strong><span>{modalRecord.className || '—'} · {modalRecord.section || '—'}</span></p><p><strong>RFID</strong><span>{modalRecord.rfid || 'Not assigned'}</span></p><strong>Academic records</strong>{#each grades.filter(item => item.studentId === modalRecord.id) as grade}<p><span>{grade.period} · {grade.className}</span><span>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}% average</span></p>{:else}<p>No academic records available.</p>{/each}<strong>Recent attendance</strong>{#each attendance.filter(item => item.id === modalRecord.id).slice(0, 5) as item}<p><span>{item.date}</span><span>{item.status} · {item.time}</span></p>{:else}<p>No attendance history.</p>{/each}</div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
   {:else if modalMode === 'registration-view'}<div class="record-details"><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Submitted</strong><span>{modalRecord.submitted}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="outline-btn" onclick={() => startRegistrationDecision(modalRecord, false)}>Reject</button><button class="primary" onclick={() => startRegistrationDecision(modalRecord, true)}>Approve</button></div>
   {:else if modalMode === 'class-view'}{#if modalRecord}<div class="record-details"><p><strong>Course</strong><span>{modalRecord.course}</span></p><p><strong>Year level</strong><span>{modalRecord.year}</span></p><p><strong>Schedule</strong><span>{modalRecord.schedule}</span></p><strong>Sections</strong>{#each modalRecord.sectionNames as section}<p><span>{section}</span><span>{students.filter(student => student.className === modalRecord.name && student.section === section).length} students</span></p>{/each}</div>{:else}<p>No class details are available.</p>{/if}<div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
-  {:else}<p>This section uses the sample E-Index data stored in this browser.</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>{/if}</div></div>{/if}
+  {:else}<p>No additional details are available for this record.</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>{/if}</div></div>{/if}
 

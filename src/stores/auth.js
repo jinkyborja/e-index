@@ -1,71 +1,55 @@
-import { derived, get, writable } from 'svelte/store';
-import { appData } from './appData.js';
-import { clearSavedSession, getSavedSession, saveSession } from '../utils/auth.js';
+import { derived, writable } from 'svelte/store';
+import { apiRequest } from '../utils/api.js';
 
 export const authUser = writable(null);
 export const isAuthenticated = derived(authUser, user => Boolean(user));
 export const authRole = derived(authUser, user => user?.role || null);
 
-function isAccountActive(account, data) {
-  if (!account || account.active === false) return false;
-  if (account.role !== 'teacher') return account.status !== 'Inactive';
-
-  const teacher = data.teachers.find(item => item.email.toLowerCase() === account.email.toLowerCase());
-  return Boolean(teacher && teacher.status === 'Approved' && teacher.active !== false);
-}
-
-function createUser(account) {
-  return {
-    ...account,
-    userId: account.teacherId || account.id || account.email,
-    fullName: account.name,
-    status: account.active === false ? 'Inactive' : 'Approved'
-  };
-}
-
-export function restoreAuth() {
-  const session = getSavedSession();
-  if (!session) {
-    authUser.set(null);
-    return null;
+export async function restoreAuth() {
+  try {
+    const result = await apiRequest('/api/auth/me');
+    authUser.set(result.user);
+    return result.user;
+  } catch (error) {
+    if (error.code === 'UNAUTHENTICATED') {
+      authUser.set(null);
+      return null;
+    }
+    throw error;
   }
-
-  const data = get(appData);
-  const account = data.accounts.find(item => item.email.toLowerCase() === session.email.toLowerCase()
-    && item.role === session.role);
-  if (!isAccountActive(account, data)) {
-    clearSavedSession();
-    authUser.set(null);
-    return null;
-  }
-
-  const user = createUser(account);
-  user.remember = Boolean(session.remember);
-  authUser.set(user);
-  return user;
 }
 
-export function signIn(email, password, role, rememberMe) {
-  const data = get(appData);
-  const account = data.accounts.find(item => item.email.toLowerCase() === email.toLowerCase());
-  if (!account || account.password !== password) return { account: null, error: 'invalid' };
-  if (account.role !== role) return { account: null, error: 'role' };
-  if (!isAccountActive(account, data)) return { account: null, error: 'inactive' };
-
-  const user = createUser(account);
-  user.remember = Boolean(rememberMe);
-  saveSession(account, rememberMe);
-  authUser.set(user);
-  return { account: user, error: null };
+export async function signIn(email, password, role, rememberMe) {
+  const result = await apiRequest('/api/auth/login', {
+    method: 'POST',
+    body: { email, password, role, rememberMe }
+  });
+  authUser.set(result.user);
+  return { account: result.user, error: null };
 }
 
-export function updateAuthUser(user) {
-  const session = getSavedSession();
-  saveSession(user, Boolean(session?.remember));
-  authUser.set(createUser(user));
+export async function registerTeacher(name, email, department, password) {
+  return apiRequest('/api/auth/register', {
+    method: 'POST',
+    body: { name, email, department, password }
+  });
 }
 
-export function signOut() {
-  clearSavedSession();
+export async function requestPasswordReset(email) {
+  return apiRequest('/api/auth/forgot-password', {
+    method: 'POST',
+    body: { email }
+  });
+}
+
+export async function resetPassword(token, password) {
+  return apiRequest('/api/auth/reset-password', {
+    method: 'POST',
+    body: { token, password }
+  });
+}
+
+export async function signOut() {
+  await apiRequest('/api/auth/logout', { method: 'POST' });
   authUser.set(null);
 }

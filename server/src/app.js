@@ -5,7 +5,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './env.js';
 import { createAuthRouter, createSessionMiddleware } from './auth.js';
-import { HttpError } from './errors.js';
+import { createDataRouter } from './data.js';
+import { asyncHandler, HttpError } from './errors.js';
 
 export function createApp({
   prisma,
@@ -22,8 +23,8 @@ export function createApp({
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:']
+        'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:']
       }
     }
   }));
@@ -47,8 +48,12 @@ export function createApp({
   app.use(cookieParser());
   app.use('/api', createSessionMiddleware(prisma, { production }));
 
-  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+  app.get('/api/health', asyncHandler(async (req, res) => {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', database: 'connected' });
+  }));
   app.use('/api/auth', createAuthRouter(prisma, { production }));
+  app.use('/api/data', createDataRouter(prisma));
 
   app.use('/api', (req, res, next) => next(new HttpError(404, 'NOT_FOUND', 'The requested API route was not found.')));
   if (staticDirectory) {
@@ -75,6 +80,18 @@ export function createApp({
           details: error.issues.map(issue => ({ field: issue.path.join('.'), message: issue.message }))
         }
       });
+    }
+    if (error?.code === 'P2002') {
+      return res.status(409).json({ error: { code: 'CONFLICT', message: 'A record with that information already exists.' } });
+    }
+    if (error?.code === 'P2025') {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'The requested record was not found.' } });
+    }
+    if (['P2021', 'P2022'].includes(error?.code)) {
+      return res.status(503).json({ error: { code: 'DATABASE_SCHEMA_NOT_READY', message: 'A required database update has not been applied.' } });
+    }
+    if (['P1000', 'P1001', 'P1002', 'P1003', 'P1008', 'P1010', 'P1011', 'P1017', 'ECONNREFUSED', 'ENOTFOUND'].includes(error?.code)) {
+      return res.status(503).json({ error: { code: 'DATABASE_UNAVAILABLE', message: 'The database is temporarily unavailable.' } });
     }
     console.error('Unhandled API error:', error);
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected server error occurred.' } });

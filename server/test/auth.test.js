@@ -14,6 +14,7 @@ function fakePrisma(account) {
   const user = { ...account };
   return {
     sessions,
+    $queryRaw: async () => [{ result: 1 }],
     $transaction: operation => operation({
       session: {
         create: async ({ data }) => {
@@ -39,7 +40,8 @@ function fakePrisma(account) {
     },
     user: {
       findUnique: async ({ where }) => where.email === user.email ? { ...user } : null
-    }
+    },
+    auditLog: { create: async () => ({}) }
   };
 }
 
@@ -54,7 +56,7 @@ function appFor(account) {
 test('health endpoint is available without a database session', async () => {
   const response = await request(appFor({})).get('/api/health');
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body, { status: 'ok' });
+  assert.deepEqual(response.body, { status: 'ok', database: 'connected' });
 });
 
 test('login creates an HttpOnly cookie and /me returns only safe account data', async () => {

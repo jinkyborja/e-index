@@ -43,7 +43,7 @@ model User {
   staffId                String?                 @unique
   registeredAt           DateTime                @default(now())
   lastLoginAt            DateTime?
-  photo                  String                  @default("")
+  photo                  String                  @default("") @db.MediumText
   notificationPreferences Json
   appearance             String                  @default("Light")
   registration           TeacherRegistration?
@@ -52,6 +52,7 @@ model User {
   notifications          Notification[]
   auditEntries           AuditLog[]              @relation("AuditActor")
   sessions               Session[]
+  passwordResetTokens    PasswordResetToken[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 
@@ -215,4 +216,17 @@ model Session {
   @@index([userId, expiresAt])
   @@index([expiresAt])
   @@map("eindex_sessions")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@map("eindex_password_reset_tokens")
 }
