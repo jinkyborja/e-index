@@ -155,3 +155,116 @@
 .sidebar.collapsed .sidebar-bottom{align-items:center}
 @media(max-width:760px){.notification-popover{right:-55px}.report-filters{gap:8px}.report-filters label{flex:1 1 130px}.report-filters select{min-width:0;width:100%}.row-actions{gap:0}.sort-button{white-space:nowrap}}
 
+.app-shell:not(.teacher-shell) .sidebar{background:#45102f;border-right-color:#5b2746;color:#f7edf2}
+.app-shell:not(.teacher-shell) .sidebar .brand-mark{color:#6b1743;background:#fff;box-shadow:none}
+.app-shell:not(.teacher-shell) .sidebar .brand strong{color:#fff}
+.app-shell:not(.teacher-shell) .sidebar .brand small{color:#d8b8c9}
+.app-shell:not(.teacher-shell) .sidebar .nav-caption{color:#c8a9bc}
+.app-shell:not(.teacher-shell) .sidebar .nav-item{color:#f0dfe8}
+.app-shell:not(.teacher-shell) .sidebar .nav-item:hover{background:#ffffff12;color:#fff}
+.app-shell:not(.teacher-shell) .sidebar .nav-item.active{color:#fff;background:#8b1d58;box-shadow:inset 0 0 0 1px #ffffff18}
+.app-shell:not(.teacher-shell) .sidebar .nav-item:focus-visible{outline:2px solid #f2c8dc;outline-offset:2px}
+
+.teacher-accounts-page{display:grid;gap:14px}
+.teacher-accounts-page>.page-title{margin-bottom:0}
+.teacher-accounts-page>.page-title .primary{min-height:38px;padding:0 15px;border-radius:9px;background:#741745;box-shadow:0 3px 8px #5913341c;font-size:10px}
+.teacher-accounts-page>.page-title .primary:hover{background:#842051}
+.college-choices-panel{padding:17px 18px 12px}
+.college-choices-heading{align-items:flex-start;margin-bottom:12px}
+.college-choices-title{display:flex;align-items:flex-start;gap:11px;min-width:0}
+.college-section-icon{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px;color:#771b49;background:#f8eaf1}
+.college-choices-title h3{margin:0;color:#332337;font:700 13px 'Plus Jakarta Sans',sans-serif}
+.college-choices-title p{max-width:760px;margin:4px 0 0;color:#746b78;font-size:10px;line-height:1.55}
+.college-choice-count{flex:none;padding:5px 9px;border:1px solid #eee6ed;border-radius:99px;color:#6d5868;background:#fff;font-size:9px;font-weight:600}
+.college-table{min-width:680px}
+.college-table th{padding:10px 12px;color:#6d6271;background:#faf8fa;font-size:9px}
+.college-table td{height:48px;padding:9px 12px;color:#453b49;font-size:10px}
+.college-table th:first-child,.college-table td:first-child{width:100px}
+.college-table th:nth-child(3),.college-table td:nth-child(3){width:120px}
+.college-table th:last-child,.college-table td:last-child{width:190px;text-align:right}
+.college-code{display:inline-flex;min-width:48px;justify-content:center;padding:5px 8px;border:1px solid #eee2ea;border-radius:7px;color:#67153f;background:#fff8fb;font-size:9px;font-weight:700}
+.college-status{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:99px;font-size:9px;font-weight:600}
+.college-status::before{width:6px;height:6px;border-radius:50%;background:currentColor;content:""}
+.college-status.active{color:#237252;background:#eaf5ef}
+.college-status.inactive{color:#706777;background:#f0edf1}
+.college-action{min-height:32px!important;padding:0 10px!important;border-radius:8px!important;font-size:9px!important;font-weight:600!important}
+.college-action.primary{background:#741745;box-shadow:none}
+.college-action.primary:hover:not(:disabled){background:#842051}
+.college-action.outline-btn{align-self:auto;border-color:#e8dce4;color:#67153f}
+.college-action.outline-btn:hover:not(:disabled){border-color:#d2b7c8;color:#741745;background:#fff8fb}
+.college-action:focus-visible{outline:2px solid #a8587d;outline-offset:2px}
+.college-action svg{flex:none}
+.college-choices-panel .table-scroll{border:1px solid #eee8ee;border-radius:9px}
+.teacher-table-panel{padding:15px 16px 10px}
+.teacher-toolbar{display:grid;grid-template-columns:minmax(220px,1.45fr) minmax(120px,.62fr) minmax(140px,.8fr) auto minmax(150px,.86fr);align-items:center;gap:9px;margin-bottom:14px}
+.teacher-search{height:38px;min-width:0;padding:0 11px;border-color:#e5dfe7;border-radius:8px}
+.teacher-search input{width:100%;min-width:0;border:0;outline:0;color:#352b38;background:transparent;font:400 10px 'DM Sans',sans-serif}
+.teacher-search input::placeholder{color:#908794}
+.teacher-toolbar>select{height:38px;min-width:0;padding:0 30px 0 10px;border:1px solid #e5dfe7;border-radius:8px;color:#514755;background:#fff;font:500 10px 'DM Sans',sans-serif}
+.teacher-toolbar .outline-btn{height:38px;padding:0 12px;border-color:#e5dfe7;color:#5a4c5a;font-size:9px}
+.teacher-toolbar .outline-btn:hover{border-color:#cdb4c4;color:#691440;background:#fff8fb}
+.teacher-toolbar .export-teachers{gap:7px}
+.teacher-toolbar .bulk-action-select{min-width:150px}
+.teacher-table-scroll{border:1px solid #eee8ee;border-radius:9px}
+.teacher-accounts-table{min-width:1120px}
+.teacher-accounts-table th{height:42px;padding:10px 11px;color:#665a69;background:#faf8fa;font-size:9px}
+.teacher-accounts-table td{height:54px;padding:10px 11px;color:#473e4a;font-size:10px}
+.teacher-accounts-table tbody tr:hover{background:#fdf9fc}
+.teacher-accounts-table td small{display:block;margin-top:3px;color:#817785;font-size:9px}
+.teacher-accounts-table th:first-child,.teacher-accounts-table td:first-child{width:38px;text-align:center}
+.teacher-accounts-table th:last-child,.teacher-accounts-table td:last-child{text-align:right}
+.teacher-accounts-table input[type="checkbox"]{width:15px;height:15px;margin:0;accent-color:#741745;cursor:pointer}
+.sort-button{color:#625768;font-size:9px}
+.sort-button:hover,.sort-button:focus-visible{color:#741745}
+.sort-button:focus-visible,.teacher-accounts-table input:focus-visible,.teacher-toolbar select:focus-visible,.teacher-search:focus-within{outline:2px solid #a8587d;outline-offset:2px}
+.teacher-accounts-table .table-link{color:#372a39}
+.teacher-accounts-table .table-link:hover{color:#741745}
+.teacher-accounts-table .role-pill{padding:5px 9px;color:#6b3f83;background:#f1eafa;font-size:9px}
+.teacher-accounts-table .status{padding:5px 9px;font-size:9px}
+.teacher-accounts-table .status.approved{color:#237252;background:#eaf5ef}
+.teacher-accounts-table .status.pending{color:#8a5a13;background:#fff4df}
+.teacher-accounts-table .status.inactive{color:#706777;background:#f0edf1}
+.teacher-accounts-table .status.rejected{color:#a44155;background:#fae9ed}
+.teacher-accounts-table .row-actions{justify-content:flex-end;gap:5px}
+.teacher-accounts-table .row-action{width:31px;height:31px;border:1px solid #e9e2e9;border-radius:8px;color:#625568;background:#fff}
+.teacher-accounts-table .row-action:hover{border-color:#d6bdcd;color:#741745;background:#fff8fb}
+.teacher-accounts-table .row-action:focus-visible,.pagination:focus-visible{outline:2px solid #a8587d;outline-offset:2px}
+.teacher-table-footer{gap:10px;padding:13px 2px 3px;color:#716776;font-size:10px}
+.page-size-control{display:flex;align-items:center;gap:7px}
+.page-size-control select{height:30px;padding:0 8px;border:1px solid #e7e0e8;border-radius:7px;color:#514755;background:#fff;font-size:10px}
+.teacher-table-footer .pagination{width:30px;height:30px;border-color:#e7e0e8;border-radius:8px;color:#5e5262}
+.teacher-table-footer .pagination:hover:not(:disabled){border-color:#ceb4c5;color:#741745;background:#fff8fb}
+.teacher-table-footer .pagination:disabled{color:#b4acb5;background:#f7f5f7;cursor:not-allowed}
+
+.modal-backdrop.admin-modal{background:#24152680;backdrop-filter:blur(3px)}
+.activation-modal{width:min(540px,100%);gap:14px;padding:26px;border:1px solid #eee5ec;border-radius:16px;box-shadow:0 18px 50px #2511282b}
+.activation-modal .modal-symbol{width:42px;height:42px;border-radius:11px;color:#741745;background:#f8eaf1}
+.activation-modal h2{padding-right:28px;color:#332337;font:700 19px 'Plus Jakarta Sans',sans-serif}
+.activation-intro{margin:0;color:#756b79;font-size:11px;line-height:1.6}
+.activation-form{display:grid;gap:11px}
+.activation-modal .activation-check{display:flex;align-items:flex-start;gap:12px;padding:13px;border:1px solid #ebe4eb;border-radius:10px;color:#4f4352;background:#fff}
+.activation-modal .activation-check:hover{border-color:#d9c2d2;background:#fffafd}
+.activation-modal .activation-check>input[type="checkbox"]{flex:none;width:18px;height:18px;margin:1px 0 0;padding:0;accent-color:#741745;cursor:pointer}
+.activation-modal .activation-check>span{display:grid;gap:4px}
+.activation-modal .activation-check strong{color:#3f3342;font-size:11px;font-weight:600}
+.activation-modal .activation-check small{color:#756b79;font-size:10px;font-weight:400;line-height:1.45}
+.activation-modal .activation-reference{display:grid;gap:7px;color:#493c4d;font-size:10px;font-weight:600}
+.activation-modal .activation-reference input{width:100%;height:40px;padding:0 11px;border:1px solid #e5dee6;border-radius:8px;color:#342a37;background:#fff;font:400 11px 'DM Sans',sans-serif}
+.activation-modal .activation-reference input::placeholder{color:#99909d}
+.activation-modal .activation-reference input:focus-visible{outline:2px solid #a8587d;outline-offset:2px;border-color:#9c5577}
+.activation-modal .modal-actions{gap:9px;margin-top:4px}
+.activation-modal .modal-actions .outline-btn,.activation-modal .modal-actions .primary{min-width:108px;min-height:38px;padding:0 13px;border-radius:8px;font-size:10px;font-weight:600}
+.activation-modal .modal-actions .outline-btn{align-self:auto;border-color:#e4dce5;color:#5f5261}
+.activation-modal .modal-actions .primary{background:#741745;box-shadow:none}
+.activation-modal .modal-actions .primary:hover:not(:disabled){background:#842051}
+.activation-modal .modal-actions .primary:disabled{color:#fff;background:#b8aab4;box-shadow:none;cursor:not-allowed}
+.activation-modal .modal-actions svg{flex:none}
+.modal-close:disabled{cursor:not-allowed;opacity:.5}
+@keyframes activation-spin{to{transform:rotate(360deg)}}
+.activation-modal .modal-actions .activation-busy svg{animation:activation-spin 1.2s linear infinite}
+
+@media(max-width:1180px){.teacher-toolbar{grid-template-columns:minmax(200px,1fr) repeat(2,minmax(125px,.55fr));}.teacher-search{grid-column:1/-1}.teacher-toolbar .export-teachers,.teacher-toolbar .bulk-action-select{grid-column:auto}}
+@media(max-width:760px){.teacher-accounts-page{gap:12px}.teacher-accounts-page>.page-title{align-items:flex-start}.teacher-accounts-page>.page-title .primary{min-height:36px;padding:0 10px}.college-choices-panel{padding:14px 12px 10px}.college-choices-heading{gap:8px}.college-choices-title p{font-size:9px}.college-choice-count{font-size:8px}.teacher-table-panel{padding:12px 10px 8px}.teacher-toolbar{grid-template-columns:1fr 1fr;gap:8px}.teacher-search{grid-column:1/-1}.teacher-toolbar .bulk-action-select{min-width:0}.teacher-toolbar .export-teachers{width:100%}.teacher-table-footer{justify-content:flex-start;flex-wrap:wrap}.activation-modal{padding:22px}}
+@media(max-width:480px){.teacher-accounts-page>.page-title{flex-wrap:wrap}.teacher-accounts-page>.page-title .page-title-main{min-width:0}.teacher-accounts-page>.page-title .primary{margin-left:auto}.college-choices-heading{align-items:flex-start}.college-choice-count{display:none}.teacher-toolbar{grid-template-columns:minmax(0,1fr)}.teacher-search{grid-column:auto}.teacher-toolbar .export-teachers{grid-column:auto}.teacher-toolbar .bulk-action-select{grid-column:auto}.teacher-table-footer{gap:8px;font-size:9px}.activation-modal{padding:19px}.activation-modal .modal-actions>*{flex:1}}
+@media(prefers-reduced-motion:reduce){.activation-modal .modal-actions .activation-busy svg{animation:none}}
+

@@ -84,6 +84,10 @@
   let selectedFile = '';
   let modalMode = 'generic';
   let modalRecord = null;
+  let collegeActivationNameConfirmed = false;
+  let collegeActivationCampusConfirmed = false;
+  let collegeActivationReference = '';
+  let collegeActivationSubmitting = false;
   let formValues = {};
   let confirmation = null;
   let selectedSection = 'All Sections';
@@ -552,10 +556,14 @@
     showModal = true;
   }
   function closeModal() {
+    if (collegeActivationSubmitting) return;
     showModal = false;
     modalRecord = null;
     confirmation = null;
     modalMode = 'generic';
+    collegeActivationNameConfirmed = false;
+    collegeActivationCampusConfirmed = false;
+    collegeActivationReference = '';
   }
   function openTeacherForm(record = null) {
     modalRecord = record;
@@ -565,6 +573,9 @@
     showModal = true;
   }
   function openCollegeActivation(college) {
+    collegeActivationNameConfirmed = false;
+    collegeActivationCampusConfirmed = false;
+    collegeActivationReference = '';
     openModal(`Activate ${college.code}`, college, 'college-activate');
   }
   function openTeacherDetails(record) {
@@ -611,21 +622,35 @@
       return;
     }
     if (modalMode === 'college-activate') {
-      const saved = await mutatePortalData(
-        `/api/data/colleges/${encodeURIComponent(modalRecord.id)}/activate`,
-        {
-          method: 'POST',
-          body: {
-            officialNameConfirmed: values.officialNameConfirmed === 'on',
-            guiuanCampusAssignmentConfirmed: values.guiuanCampusAssignmentConfirmed === 'on',
-            confirmationReference: String(values.confirmationReference || '').trim()
-          }
-        },
-        `${modalRecord.name} activated.`
-      );
-      if (saved) {
-        await loadCollegeChoices();
-        closeModal();
+      const officialNameConfirmed = values.officialNameConfirmed === 'on';
+      const guiuanCampusAssignmentConfirmed = values.guiuanCampusAssignmentConfirmed === 'on';
+      const confirmationReference = String(values.confirmationReference || '').trim();
+      if (!officialNameConfirmed || !guiuanCampusAssignmentConfirmed || !confirmationReference) {
+        notify('Confirm the official name and campus assignment, then provide a confirmation reference.');
+        return;
+      }
+      if (collegeActivationSubmitting) return;
+      collegeActivationSubmitting = true;
+      try {
+        const saved = await mutatePortalData(
+          `/api/data/colleges/${encodeURIComponent(modalRecord.id)}/activate`,
+          {
+            method: 'POST',
+            body: {
+              officialNameConfirmed,
+              guiuanCampusAssignmentConfirmed,
+              confirmationReference
+            }
+          },
+          `${modalRecord.name} activated.`
+        );
+        if (saved) {
+          await loadCollegeChoices();
+          collegeActivationSubmitting = false;
+          closeModal();
+        }
+      } finally {
+        collegeActivationSubmitting = false;
       }
       return;
     }
@@ -1042,49 +1067,69 @@
         />
 
       {:else if page === 'Teachers' && isAdmin}
-        <PageTitle icon={Users} title="Teacher Accounts" subtitle="Review teacher access and manage account status." action="Add Teacher" onAction={() => openTeacherForm()}/>
-        <section class="panel">
-          <div class="panel-heading"><div><h3>College choices</h3><p>These provisional names and Guiuan Campus assignments are unverified. Activate only after confirming both.</p></div></div>
-          <div class="table-scroll"><table><thead><tr><th>Code</th><th>College</th><th>Status</th><th>Action</th></tr></thead><tbody>
-            {#each colleges as college}
-              <tr><td>{college.code}</td><td>{college.name}</td><td>{college.isActive ? 'Active' : 'Inactive'}</td><td>{#if college.isActive}<button class="outline-btn" onclick={() => askConfirmation('college-deactivate', college, 'Deactivate college', `Deactivate ${college.name}? Existing teacher assignments will be retained.`)}>Deactivate</button>{:else}<button class="primary tiny" onclick={() => openCollegeActivation(college)}>Confirm and activate</button>{/if}</td></tr>
-            {:else}<tr><td colspan="4" class="empty-table">No college records are available.</td></tr>{/each}
-          </tbody></table></div>
-        </section>
-        <section class="panel table-panel">
-          <div class="toolbar">
-            <div class="search-field"><Search size={16}/><input id="page-search" bind:value={searchText} oninput={() => currentPage = 1} placeholder="Search name, email, or staff ID..."/></div>
-            <select bind:value={teacherRoleFilter} onchange={() => currentPage = 1}><option>All Roles</option><option>Teacher</option></select>
-            <select bind:value={teacherStatusFilter} onchange={() => currentPage = 1}><option>All Statuses</option><option>Approved</option><option>Pending</option><option>Inactive</option><option>Rejected</option></select>
-            <button class="outline-btn" onclick={() => exportRecords('teachers.csv', filteredTeachers)}>Export CSV</button>
-            <select aria-label="Bulk actions" onchange={event => {
-              const action = event.currentTarget.value;
-              if (['activate', 'deactivate', 'delete'].includes(action)) {
-                if (selectedRows.length) askConfirmation(action === 'delete' ? 'bulk-delete' : `bulk-${action}`, selectedRows, `${action === 'activate' ? 'Activate' : 'Deactivate'} selected accounts`, `Update ${selectedRows.length} selected account(s)? Existing records will be retained.`);
-                else notify('Select teacher accounts before choosing a bulk action.');
-              }
-              event.currentTarget.value = '';
-            }}>
-              <option value="">Bulk Actions</option><option value="activate">Activate</option><option value="deactivate">Deactivate</option><option value="delete">Deactivate and retain records</option>
-            </select>
-          </div>
-          <div class="table-scroll"><table><thead><tr><th><input type="checkbox" checked={visibleTeachers.length > 0 && visibleTeachers.every(t => selectedRows.includes(t.id))} onchange={() => toggleAllRows(visibleTeachers)} aria-label="Select all visible teachers"/></th><th><button class="sort-button" onclick={() => sortBy('name')}>Name ↕</button></th><th><button class="sort-button" onclick={() => sortBy('id')}>Staff ID ↕</button></th><th><button class="sort-button" onclick={() => sortBy('department')}>Department ↕</button></th><th><button class="sort-button" onclick={() => sortBy('email')}>Email ↕</button></th><th>Role</th><th><button class="sort-button" onclick={() => sortBy('status')}>Status ↕</button></th><th><button class="sort-button" onclick={() => sortBy('registered')}>Registered ↕</button></th><th>Last Login</th><th>Actions</th></tr></thead><tbody>
-            {#each visibleTeachers as t}
-              <tr>
-                <td><input type="checkbox" checked={selectedRows.includes(t.id)} onchange={() => toggleRow(t.id)} aria-label={`Select ${t.name}`}/></td>
-                <td><button class="table-link" onclick={() => openTeacherDetails(t)}><div class="name-cell"><span class="initial-badge">{t.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{t.name}</strong></div></button></td>
-                <td>{t.id}</td><td>{t.collegeName || t.department}{#if t.collegeIsActive === false}<small>Inactive assignment</small>{/if}</td><td>{t.email}</td><td><span class="role-pill">{t.role}</span></td>
-                <td><span class={`status ${t.status === 'Approved' ? 'approved' : 'pending'}`}>{t.status}</span></td><td>{t.registered}</td><td>{t.last}</td>
-                <td><div class="row-actions">
-                  <button class="icon-btn row-action" aria-label={`View ${t.name}`} onclick={() => openTeacherDetails(t)}><Eye size={16}/></button>
-                  <button class="icon-btn row-action" aria-label={`Edit ${t.name}`} onclick={() => openTeacherForm(t)}><Pencil size={15}/></button>
-                  <button class="icon-btn row-action" aria-label={`${t.status === 'Approved' ? 'Deactivate' : 'Activate'} ${t.name}`} onclick={() => askConfirmation('teacher-status', t, `${t.status === 'Approved' ? 'Deactivate' : 'Activate'} account`, `${t.status === 'Approved' ? 'Deactivate' : 'Activate'} ${t.name}'s account?`)}><RefreshCw size={15}/></button>
-                  <button class="icon-btn row-action" aria-label={`Deactivate ${t.name} and retain records`} onclick={() => askConfirmation('delete-teacher', t, 'Deactivate teacher account', `Deactivate ${t.name}'s account? Existing records will be retained.`)}><Trash2 size={15}/></button>
-                </div></td>
-              </tr>
-            {:else}<tr><td colspan="10" class="empty-table">No teacher accounts match these filters.</td></tr>{/each}
-          </tbody></table></div><div class="table-footer"><span>Rows per page <select value={pageSize} onchange={changePageSize}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></span><span>Showing {filteredTeachers.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filteredTeachers.length)} of {filteredTeachers.length}</span><button class="pagination" disabled={currentPage === 1} onclick={() => currentPage -= 1}><ChevronLeft size={14}/></button><span>Page {currentPage} of {Math.max(1, Math.ceil(filteredTeachers.length / pageSize))}</span><button class="pagination" disabled={currentPage >= Math.ceil(filteredTeachers.length / pageSize)} onclick={() => currentPage += 1}><ChevronRight size={14}/></button></div>
-        </section>
+        <div class="teacher-accounts-page">
+          <PageTitle icon={Users} title="Teacher Accounts" subtitle="Review teacher access and manage account status." action="Add Teacher" onAction={() => openTeacherForm()}/>
+          <section class="panel college-choices-panel" aria-labelledby="college-choices-title">
+            <div class="panel-heading college-choices-heading">
+              <div class="college-choices-title">
+                <span class="college-section-icon"><Building2 size={17}/></span>
+                <div><h3 id="college-choices-title">College Choices</h3><p>These provisional names and Guiuan Campus assignments are unverified. Activate only after confirming both.</p></div>
+              </div>
+              <span class="college-choice-count">{colleges.length} choices</span>
+            </div>
+            <div class="table-scroll college-table-scroll"><table class="college-table"><thead><tr><th scope="col">Code</th><th scope="col">College</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>
+              {#each colleges as college}
+                <tr>
+                  <td><span class="college-code">{college.code}</span></td>
+                  <td>{college.name}</td>
+                  <td><span class={`college-status ${college.isActive ? 'active' : 'inactive'}`}>{college.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td>{#if college.isActive}<button class="outline-btn college-action" type="button" onclick={() => askConfirmation('college-deactivate', college, 'Deactivate college', `Deactivate ${college.name}? Existing teacher assignments will be retained.`)}><XCircle size={14}/>Deactivate</button>{:else}<button class="primary college-action" type="button" onclick={() => openCollegeActivation(college)}><CheckCircle2 size={14}/>Confirm and activate</button>{/if}</td>
+                </tr>
+              {:else}<tr><td colspan="4" class="empty-table">No college records are available.</td></tr>{/each}
+            </tbody></table></div>
+          </section>
+          <section class="panel table-panel teacher-table-panel" aria-label="Teacher account records">
+            <div class="toolbar teacher-toolbar">
+              <div class="search-field teacher-search"><Search size={16}/><input id="page-search" bind:value={searchText} oninput={() => currentPage = 1} aria-label="Search teacher accounts" placeholder="Search name, email, or staff ID..."/></div>
+              <select aria-label="Filter teachers by role" bind:value={teacherRoleFilter} onchange={() => currentPage = 1}><option>All Roles</option><option>Teacher</option></select>
+              <select aria-label="Filter teachers by status" bind:value={teacherStatusFilter} onchange={() => currentPage = 1}><option>All Statuses</option><option>Approved</option><option>Pending</option><option>Inactive</option><option>Rejected</option></select>
+              <button class="outline-btn export-teachers" type="button" onclick={() => exportRecords('teachers.csv', filteredTeachers)}><Download size={14}/>Export CSV</button>
+              <select class="bulk-action-select" aria-label="Bulk actions" onchange={event => {
+                const action = event.currentTarget.value;
+                if (['activate', 'deactivate', 'delete'].includes(action)) {
+                  if (selectedRows.length) askConfirmation(action === 'delete' ? 'bulk-delete' : `bulk-${action}`, selectedRows, `${action === 'activate' ? 'Activate' : 'Deactivate'} selected accounts`, `Update ${selectedRows.length} selected account(s)? Existing records will be retained.`);
+                  else notify('Select teacher accounts before choosing a bulk action.');
+                }
+                event.currentTarget.value = '';
+              }}>
+                <option value="">Bulk Actions</option><option value="activate">Activate</option><option value="deactivate">Deactivate</option><option value="delete">Deactivate and retain records</option>
+              </select>
+            </div>
+            <div class="table-scroll teacher-table-scroll"><table class="teacher-accounts-table"><thead><tr><th scope="col"><input type="checkbox" checked={visibleTeachers.length > 0 && visibleTeachers.every(t => selectedRows.includes(t.id))} onchange={() => toggleAllRows(visibleTeachers)} aria-label="Select all visible teachers"/></th><th scope="col"><button class="sort-button" aria-label="Sort by teacher name" onclick={() => sortBy('name')}>Name ↕</button></th><th scope="col"><button class="sort-button" aria-label="Sort by staff ID" onclick={() => sortBy('id')}>Staff ID ↕</button></th><th scope="col"><button class="sort-button" aria-label="Sort by department" onclick={() => sortBy('department')}>Department ↕</button></th><th scope="col"><button class="sort-button" aria-label="Sort by email" onclick={() => sortBy('email')}>Email ↕</button></th><th scope="col">Role</th><th scope="col"><button class="sort-button" aria-label="Sort by status" onclick={() => sortBy('status')}>Status ↕</button></th><th scope="col"><button class="sort-button" aria-label="Sort by registration date" onclick={() => sortBy('registered')}>Registered ↕</button></th><th scope="col">Last Login</th><th scope="col">Actions</th></tr></thead><tbody>
+              {#each visibleTeachers as t}
+                <tr>
+                  <td><input type="checkbox" checked={selectedRows.includes(t.id)} onchange={() => toggleRow(t.id)} aria-label={`Select ${t.name}`}/></td>
+                  <td><button class="table-link" type="button" onclick={() => openTeacherDetails(t)}><div class="name-cell"><span class="initial-badge">{t.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{t.name}</strong></div></button></td>
+                  <td>{t.id}</td><td>{t.collegeName || t.department}{#if t.collegeIsActive === false}<small>Inactive assignment</small>{/if}</td><td>{t.email}</td><td><span class="role-pill">{t.role}</span></td>
+                  <td><span class={`status ${String(t.status).toLowerCase()}`}>{t.status}</span></td><td>{t.registered}</td><td>{t.last}</td>
+                  <td><div class="row-actions">
+                    <button class="icon-btn row-action" type="button" aria-label={`View ${t.name}`} onclick={() => openTeacherDetails(t)}><Eye size={16}/></button>
+                    <button class="icon-btn row-action" type="button" aria-label={`Edit ${t.name}`} onclick={() => openTeacherForm(t)}><Pencil size={15}/></button>
+                    <button class="icon-btn row-action" type="button" aria-label={`${t.status === 'Approved' ? 'Deactivate' : 'Activate'} ${t.name}`} onclick={() => askConfirmation('teacher-status', t, `${t.status === 'Approved' ? 'Deactivate' : 'Activate'} account`, `${t.status === 'Approved' ? 'Deactivate' : 'Activate'} ${t.name}'s account?`)}><RefreshCw size={15}/></button>
+                    <button class="icon-btn row-action" type="button" aria-label={`Deactivate ${t.name} and retain records`} onclick={() => askConfirmation('delete-teacher', t, 'Deactivate teacher account', `Deactivate ${t.name}'s account? Existing records will be retained.`)}><Trash2 size={15}/></button>
+                  </div></td>
+                </tr>
+              {:else}<tr><td colspan="10" class="empty-table">No teacher accounts match these filters.</td></tr>{/each}
+            </tbody></table></div>
+            <div class="table-footer teacher-table-footer">
+              <label class="page-size-control">Rows per page <select aria-label="Rows per page" value={pageSize} onchange={changePageSize}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
+              <span>Showing {filteredTeachers.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filteredTeachers.length)} of {filteredTeachers.length}</span>
+              <button class="pagination" type="button" aria-label="Previous page" disabled={currentPage === 1} onclick={() => currentPage -= 1}><ChevronLeft size={14}/></button>
+              <span>Page {currentPage} of {Math.max(1, Math.ceil(filteredTeachers.length / pageSize))}</span>
+              <button class="pagination" type="button" aria-label="Next page" disabled={currentPage >= Math.ceil(filteredTeachers.length / pageSize)} onclick={() => currentPage += 1}><ChevronRight size={14}/></button>
+            </div>
+          </section>
+        </div>
 
       {:else if page === 'Students'}
         <PageTitle icon={GraduationCap} title="Students" subtitle={isAdmin ? 'View and manage student records.' : 'View your enrolled students.'} action="Export List" onAction={() => exportRecords('students.csv', filteredStudents)}/>
@@ -1383,9 +1428,30 @@
 {/if}
 
 {#if notice}<div class="toast"><CheckCircle2 size={17}/>{notice}</div>{/if}
-{#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeModal()}><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" onclick={closeModal}><X size={18}/></button><div class="modal-symbol"><Users size={22}/></div><h2 id="modal-heading">{modalTitle}</h2>
+{#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && !collegeActivationSubmitting && closeModal()}><div class:activation-modal={modalMode === 'college-activate'} class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" aria-describedby={modalMode === 'college-activate' ? 'college-activation-description' : undefined} tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" disabled={collegeActivationSubmitting} onclick={closeModal}><X size={18}/></button><div class="modal-symbol">{#if modalMode === 'college-activate'}<Building2 size={22}/>{:else}<Users size={22}/>{/if}</div><h2 id="modal-heading">{modalTitle}</h2>
   {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>College / Department<select name="collegeId" value={formValues.collegeId || ''} required disabled={collegeChoicesLoading || (activeCollegeChoices.length === 0 && !formValues.collegeId)}>{#if formValues.collegeId && !activeCollegeChoices.some(college => college.id === formValues.collegeId)}<option value={formValues.collegeId}>{formValues.collegeName || formValues.department}{formValues.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}<option value="" disabled>Select your college</option>{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select></label>{#if collegeChoicesError}<p class="auth-error" role="alert">{collegeChoicesError}</p>{/if}<label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
-  {:else if modalMode === 'college-activate'}<p>These entries are provisional. Confirm the official name and Guiuan Campus assignment before activation; these attestations are not independent verification.</p><form onsubmit={submitModalForm}><label><input type="checkbox" name="officialNameConfirmed" required/> I confirm the official college name.</label><label><input type="checkbox" name="guiuanCampusAssignmentConfirmed" required/> I confirm this college is assigned to Guiuan Campus.</label><label>Confirmation reference<input name="confirmationReference" maxlength="500" required placeholder="Official source or confirmation reference"/></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Activate College</button></div></form>
+  {:else if modalMode === 'college-activate'}
+    <p class="activation-intro" id="college-activation-description">These entries are provisional. Confirm the official name and Guiuan Campus assignment before activation; these attestations are not independent verification.</p>
+    <form class="activation-form" aria-busy={collegeActivationSubmitting} onsubmit={submitModalForm}>
+      <label class="activation-check">
+        <input type="checkbox" name="officialNameConfirmed" required bind:checked={collegeActivationNameConfirmed}/>
+        <span><strong>Official college name</strong><small>I confirm the official college name.</small></span>
+      </label>
+      <label class="activation-check">
+        <input type="checkbox" name="guiuanCampusAssignmentConfirmed" required bind:checked={collegeActivationCampusConfirmed}/>
+        <span><strong>Guiuan Campus assignment</strong><small>I confirm this college is assigned to Guiuan Campus.</small></span>
+      </label>
+      <label class="activation-reference">
+        <span>Confirmation reference</span>
+        <input id="college-confirmation-reference" name="confirmationReference" bind:value={collegeActivationReference} maxlength="500" required placeholder="Official source or confirmation reference"/>
+      </label>
+      <div class="modal-actions">
+        <button class="outline-btn" type="button" disabled={collegeActivationSubmitting} onclick={closeModal}>Cancel</button>
+        <button class="primary" class:activation-busy={collegeActivationSubmitting} type="submit" disabled={!collegeActivationNameConfirmed || !collegeActivationCampusConfirmed || !collegeActivationReference.trim() || collegeActivationSubmitting}>
+          {#if collegeActivationSubmitting}<RefreshCw size={15}/>Activating...{:else}<Check size={15}/>Activate College{/if}
+        </button>
+      </div>
+    </form>
   {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Cancel</button><button class="primary danger-action" onclick={runConfirmation}>Confirm</button></div>
   {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>College / Department</strong><span>{modalRecord.collegeName || modalRecord.department}{modalRecord.collegeIsActive === false ? ' (inactive assignment)' : ''}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
   {:else if modalMode === 'student-view'}<div class="record-details"><p><strong>Student ID</strong><span>{modalRecord.id}</span></p><p><strong>Program / Year</strong><span>{modalRecord.program} · {modalRecord.year}</span></p><p><strong>Enrollment</strong><span>{modalRecord.status}</span></p><p><strong>Class / Section</strong><span>{modalRecord.className || '—'} · {modalRecord.section || '—'}</span></p><p><strong>RFID</strong><span>{modalRecord.rfid || 'Not assigned'}</span></p><strong>Academic records</strong>{#each grades.filter(item => item.studentId === modalRecord.id) as grade}<p><span>{grade.period} · {grade.className}</span><span>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}% average</span></p>{:else}<p>No academic records available.</p>{/each}<strong>Recent attendance</strong>{#each attendance.filter(item => item.id === modalRecord.id).slice(0, 5) as item}<p><span>{item.date}</span><span>{item.status} · {item.time}</span></p>{:else}<p>No attendance history.</p>{/each}</div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
