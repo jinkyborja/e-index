@@ -32,10 +32,6 @@
   let loginEmail = '';
   let signupName = '';
   let signupDepartment = '';
-  let authTransitionPhase = 'idle';
-  let authTransitionDirection = 'to-signup';
-  let authTransitioning = false;
-  let authTransitionTimer = null;
   let rememberMe = Boolean(storedAccount?.remember);
   let authError = '';
   let showPassword = false;
@@ -232,7 +228,7 @@
       }
       portal = 'auth';
       page = 'Dashboard';
-      setAuthMode('login', true);
+      setAuthMode('login');
       return;
     }
 
@@ -275,7 +271,7 @@
     authRole = value;
     rememberMe = false;
     authError = '';
-    setAuthMode('login', true);
+    setAuthMode('login');
     page = 'Dashboard';
     searchText = '';
     sidebarOpen = false;
@@ -290,36 +286,8 @@
     signupPasswordConfirm = '';
     authError = '';
   }
-  function setAuthMode(value, force = false) {
-    if (force) {
-      if (authTransitionTimer !== null) clearTimeout(authTransitionTimer);
-      authTransitionTimer = null;
-      authTransitionPhase = 'idle';
-      authTransitioning = false;
-      applyAuthMode(value);
-      return;
-    }
-    if (authTransitioning) return;
-    if (value === authMode) {
-      applyAuthMode(value);
-      return;
-    }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      applyAuthMode(value);
-      return;
-    }
-    authTransitioning = true;
-    authTransitionDirection = value === 'signup' ? 'to-signup' : 'to-login';
-    authTransitionPhase = 'closing';
-    authTransitionTimer = setTimeout(() => {
-      applyAuthMode(value);
-      authTransitionPhase = 'opening';
-      authTransitionTimer = setTimeout(() => {
-        authTransitionPhase = 'idle';
-        authTransitioning = false;
-        authTransitionTimer = null;
-      }, 600);
-    }, 350);
+  function setAuthMode(value) {
+    applyAuthMode(value);
   }
   function setAuthRole(value) {
     authRole = value;
@@ -327,7 +295,7 @@
     loginEmail = '';
     loginPassword = '';
     rememberMe = false;
-    setAuthMode('login', true);
+    setAuthMode('login');
   }
   function logOut() {
     const role = isAdmin ? 'admin' : 'teacher';
@@ -337,13 +305,12 @@
     teacherAuthenticated = false;
     authRole = role;
     rememberMe = false;
-    setAuthMode('login', true);
+    setAuthMode('login');
     navigate('/login', { replace: true });
     notify('You have been logged out.');
   }
   function handleTeacherAuth(event) {
     event.preventDefault();
-    if (authTransitioning) return;
     if (authMode === 'signup') {
       if (signupPassword !== signupPasswordConfirm) {
         authError = 'The passwords do not match.';
@@ -821,7 +788,7 @@
 </svelte:head>
 
 {#if !isAdmin && !teacherAuthenticated}
-  <main class:signup-active={authMode === 'signup'} class="auth-page">
+  <main class="auth-page">
     <div class="auth-shell">
     <section class="auth-story">
       <button class="auth-brand" onclick={() => switchPortal('admin')} aria-label="Return to administration dashboard">
@@ -846,16 +813,15 @@
     <section class="auth-panel">
       <div class="auth-panel-top"><span>E-INDEX ACCESS</span></div>
       <div class="auth-form-wrap">
-        <div class:transition-closing={authTransitionPhase === 'closing'} class:transition-opening={authTransitionPhase === 'opening'} class="auth-card" aria-busy={authTransitioning}>
-          <div class:to-signup={authTransitionDirection === 'to-signup'} class="auth-transition-sweep" aria-hidden="true"></div>
+        <div class="auth-card">
           <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
           <div class="auth-heading">
             <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
             <p>{authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
           </div>
           <div class="auth-tabs" role="tablist" aria-label="Teacher account access">
-            <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} disabled={authTransitioning} onclick={() => setAuthMode('login')}>Sign in</button>
-            {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} disabled={authTransitioning} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
+            <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
+            {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
           </div>
 
           <form class:signup-form={authMode === 'signup'} class="auth-form" onsubmit={handleTeacherAuth}>
@@ -884,7 +850,7 @@
               <div class="auth-form-options"><label class="auth-remember"><input type="checkbox" bind:checked={rememberMe}/> Remember me</label><button type="button" class="auth-text-button" onclick={() => notify('Password reset is not available in this frontend demo.')}>Forgot password?</button></div>
             {/if}
             {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
-            <button class="auth-submit" type="submit" disabled={authTransitioning}>{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
+            <button class="auth-submit" type="submit">{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
           </form>
 
           {#if authMode === 'login'}
