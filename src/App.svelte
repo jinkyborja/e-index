@@ -14,6 +14,7 @@
   import { navigate, routeLocation, watchHistory } from './utils/router.js';
   import { dashboardPath, pathForPage, resolvePortalRoute } from './utils/routes.js';
   import { exportCsv } from './utils/export.js';
+  import { TEACHER_COLLEGES } from '../shared/teacher-colleges.js';
   import {
     LayoutDashboard, Users, GraduationCap, Clock3, ClipboardList, Activity,
     Settings, Search, Bell, ChevronDown, Menu, X, LogOut, PanelLeftClose,
@@ -389,7 +390,7 @@
         return;
       }
       try {
-        await registerTeacher(signupName.trim(), loginEmail.trim().toLowerCase(), signupDepartment, signupPassword);
+        await registerTeacher(signupName.trim(), loginEmail.trim().toLowerCase(), signupDepartment, signupPassword, signupPasswordConfirm);
       } catch (error) {
         authError = authErrorMessage(error);
         return;
@@ -456,6 +457,9 @@
       ACCOUNT_INACTIVE: 'This account is inactive.',
       EMAIL_IN_USE: 'An account or registration with this email already exists.'
     };
+    if (error.code === 'VALIDATION_ERROR') {
+      return error.details?.[0]?.message || 'Check the registration details and try again.';
+    }
     return messages[error.code] || error.message || 'The request could not be completed.';
   }
   function sortRecords(records) {
@@ -611,11 +615,25 @@
       }
     } else if (type === 'registration-approve' || type === 'registration-reject') {
       const status = type === 'registration-approve' ? 'APPROVED' : 'REJECTED';
-      const saved = await mutatePortalData(`/api/data/registrations/${encodeURIComponent(record.id)}`, {
-        method: 'PATCH',
-        body: { status }
-      }, `Registration ${status.toLowerCase()}.`);
-      if (saved) closeModal();
+      try {
+        const result = await apiRequest(`/api/data/registrations/${encodeURIComponent(record.id)}`, {
+          method: 'PATCH',
+          body: { status }
+        });
+        closeModal();
+        let refreshMessage = '';
+        try {
+          await refreshPortalData();
+        } catch (error) {
+          refreshMessage = ` Portal data could not refresh: ${error.message}`;
+        }
+        const emailMessage = result?.emailNotification === 'submitted'
+          ? 'An email notification was submitted to the applicant.'
+          : 'The decision was saved, but the applicant email could not be submitted. Please follow up with the applicant.';
+        notify(`Registration ${status.toLowerCase()}. ${emailMessage}${refreshMessage}`);
+      } catch (error) {
+        notify(error.message);
+      }
     }
   }
   function startRegistrationDecision(record, approve) {
@@ -815,8 +833,8 @@
         <div class="auth-card">
           <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
           <div class="auth-heading">
-            <h2>{resetPasswordMode ? 'Choose a new password' : forgotPasswordMode ? 'Reset your password' : authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? 'Sign in to your E-Index workspace.' : 'Register with your school details to request teacher access.'}</p>
+            <h2>{resetPasswordMode ? 'Choose a new password' : forgotPasswordMode ? 'Reset your password' : authMode === 'login' ? 'Welcome back' : 'Request Teacher Access'}</h2>
+            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? 'Sign in to your E-Index workspace.' : 'An administrator must approve your teacher account before you can sign in.'}</p>
           </div>
           {#if !forgotPasswordMode && !resetPasswordMode}
             <div class="auth-tabs" role="tablist" aria-label="Account access">
@@ -850,24 +868,24 @@
           {:else}
             <form class:signup-form={authMode === 'signup'} class="auth-form" onsubmit={handleTeacherAuth}>
               {#if authMode === 'signup'}
-                <label>Full name
-                  <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" placeholder="e.g. Alex Santos" bind:value={signupName} required/></span>
+                <label>Full Name
+                  <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" maxlength="120" placeholder="Enter your full name" bind:value={signupName} required/></span>
                 </label>
               {/if}
-              <label>School email
-                <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" name="email" placeholder="you@school.edu.ph" bind:value={loginEmail} required/></span>
+              <label>{authMode === 'signup' ? 'School Email Address' : 'School email'}
+                <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" name="email" maxlength="254" placeholder="Enter your school email address" bind:value={loginEmail} required/></span>
               </label>
               {#if authMode === 'signup'}
-                <label>Department
-                  <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your department</option><option>Computer Studies</option><option>Education</option><option>Arts and Sciences</option><option>Business</option><option>Other</option></select><ChevronDown size={15}/></span>
+                <label>College / Department
+                  <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your college</option>{#each TEACHER_COLLEGES as college}<option value={college}>{college}</option>{/each}</select><ChevronDown size={15}/></span>
                 </label>
               {/if}
               <label>Password
-                <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
+                <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" maxlength="128" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
               </label>
               {#if authMode === 'signup'}
                 <label>Confirm password
-                  <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" name="password-confirm" placeholder="Re-enter your password" minlength="8" bind:value={signupPasswordConfirm} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
+                  <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" name="password-confirm" placeholder="Re-enter your password" minlength="8" maxlength="128" bind:value={signupPasswordConfirm} oninput={() => authError = ''} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
                 </label>
               {/if}
               {#if authMode === 'login'}
@@ -875,7 +893,7 @@
               {/if}
               {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
               {#if authInitError}<p class="auth-error" role="alert">{authInitError}</p>{/if}
-              <button class="auth-submit" type="submit" disabled={!authReady}>{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
+              <button class="auth-submit" type="submit" disabled={!authReady}>{authMode === 'login' ? 'Sign in to your account' : 'Request Teacher Access'} <ArrowRight size={17}/></button>
             </form>
           {/if}
         </div>
@@ -1047,7 +1065,7 @@
                   <div class="teacher-profile-divider"></div>
                   <div class="teacher-profile-details">
                     <div><span class="teacher-profile-detail-icon"><Mail size={16}/></span><span><small>Email address</small><strong>{userSettings.email}</strong></span></div>
-                    <div><span class="teacher-profile-detail-icon"><Building2 size={16}/></span><span><small>Department</small><strong>{userSettings.department || 'Not set'}</strong></span></div>
+                    <div><span class="teacher-profile-detail-icon"><Building2 size={16}/></span><span><small>{isAdmin ? 'Department' : 'College / Department'}</small><strong>{userSettings.department || 'Not set'}</strong></span></div>
                     <div><span class="teacher-profile-detail-icon"><GraduationCap size={16}/></span><span><small>Role</small><strong>{isAdmin ? 'System Admin' : 'Teacher'}</strong></span></div>
                   </div>
                   <button class="soft-btn teacher-change-photo" type="button" onclick={chooseProfilePhoto}><Camera size={15}/>Change Photo</button>
@@ -1065,7 +1083,7 @@
                     <label>First Name<span class="teacher-profile-field"><UserRound size={16}/><input name="firstName" value={userSettings.firstName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
                     <label>Last Name<span class="teacher-profile-field"><UserRound size={16}/><input name="lastName" value={userSettings.lastName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
                     <label class="full">Email Address<span class="teacher-profile-field"><Mail size={16}/><input name="email" type="email" value={userSettings.email} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
-                    <label class="full">Department<span class="teacher-profile-field"><Building2 size={16}/><input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
+                    <label class="full">{isAdmin ? 'Department' : 'College / Department'}<span class="teacher-profile-field"><Building2 size={16}/>{#if isAdmin}<input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/>{:else}<select name="department" value={userSettings.department} required onchange={event => updateProfileEdited(event.currentTarget.form)}>{#if userSettings.department && !TEACHER_COLLEGES.includes(userSettings.department)}<option value={userSettings.department}>Existing value: {userSettings.department}</option>{/if}<option value="" disabled>Select your college</option>{#each TEACHER_COLLEGES as college}<option value={college}>{college}</option>{/each}</select>{/if}</span></label>
                   </div>
                   <div class="form-actions"><button class="primary" type="submit"><Check size={16}/>Save Changes</button></div>
                 </form>
@@ -1282,7 +1300,7 @@
 
 {#if notice}<div class="toast"><CheckCircle2 size={17}/>{notice}</div>{/if}
 {#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeModal()}><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" onclick={closeModal}><X size={18}/></button><div class="modal-symbol"><Users size={22}/></div><h2 id="modal-heading">{modalTitle}</h2>
-  {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>Department<input name="department" value={formValues.department} required/></label><label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
+  {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>College / Department<select name="department" value={formValues.department} required>{#if formValues.department && !TEACHER_COLLEGES.includes(formValues.department)}<option value={formValues.department}>Existing value: {formValues.department}</option>{/if}<option value="" disabled>Select your college</option>{#each TEACHER_COLLEGES as college}<option value={college}>{college}</option>{/each}</select></label><label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
   {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Cancel</button><button class="primary danger-action" onclick={runConfirmation}>Confirm</button></div>
   {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
   {:else if modalMode === 'student-view'}<div class="record-details"><p><strong>Student ID</strong><span>{modalRecord.id}</span></p><p><strong>Program / Year</strong><span>{modalRecord.program} · {modalRecord.year}</span></p><p><strong>Enrollment</strong><span>{modalRecord.status}</span></p><p><strong>Class / Section</strong><span>{modalRecord.className || '—'} · {modalRecord.section || '—'}</span></p><p><strong>RFID</strong><span>{modalRecord.rfid || 'Not assigned'}</span></p><strong>Academic records</strong>{#each grades.filter(item => item.studentId === modalRecord.id) as grade}<p><span>{grade.period} · {grade.className}</span><span>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}% average</span></p>{:else}<p>No academic records available.</p>{/each}<strong>Recent attendance</strong>{#each attendance.filter(item => item.id === modalRecord.id).slice(0, 5) as item}<p><span>{item.date}</span><span>{item.status} · {item.time}</span></p>{:else}<p>No attendance history.</p>{/each}</div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>

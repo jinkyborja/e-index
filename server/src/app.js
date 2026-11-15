@@ -56,7 +56,8 @@ export function createApp({
   prisma,
   staticDirectory,
   allowedOrigins = env.allowedOrigins,
-  production = env.NODE_ENV === 'production'
+  production = env.NODE_ENV === 'production',
+  sendTeacherRegistrationDecisionEmail
 } = {}) {
   if (!prisma) throw new Error('createApp requires a Prisma client instance.');
 
@@ -105,7 +106,7 @@ export function createApp({
 
   app.use('/api', createSessionMiddleware(prisma, { production }));
   app.use('/api/auth', createAuthRouter(prisma, { production }));
-  app.use('/api/data', createDataRouter(prisma));
+  app.use('/api/data', createDataRouter(prisma, { sendTeacherRegistrationDecisionEmail }));
 
   app.use('/api', (req, res, next) => next(new HttpError(404, 'NOT_FOUND', 'The requested API route was not found.')));
   if (staticDirectory) {

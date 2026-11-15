@@ -28,10 +28,10 @@ export async function signIn(email, password, rememberMe) {
   return { account: result.user, error: null };
 }
 
-export async function registerTeacher(name, email, department, password) {
+export async function registerTeacher(name, email, department, password, confirmPassword) {
   return apiRequest('/api/auth/register', {
     method: 'POST',
-    body: { name, email, department, password }
+    body: { name, email, department, password, confirmPassword }
   });
 }
 

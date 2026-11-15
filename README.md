@@ -23,14 +23,14 @@ The API uses `DATABASE_URL` when configured. Otherwise, it builds the Prisma URL
 | `DB_SSL`, `DB_SSL_REJECT_UNAUTHORIZED`, `DB_CONNECT_TIMEOUT_MS` | Optional; defaults apply | MySQL TLS and connect timeout |
 | `NODE_ENV`, `PORT` | Optional; defaults apply | Runtime mode and HTTP listener |
 | `CORS_ORIGINS` or `FRONTEND_ORIGINS` | Optional; defaults apply | API origin allowlist; `CORS_ORIGINS` takes precedence |
-| `FRONTEND_URL` | Optional | Fallback host for password-reset links |
+| `FRONTEND_URL` | Optional | Fallback host for password-reset and registration-decision links |
 | `SESSION_TTL_DAYS`, `REMEMBER_SESSION_TTL_DAYS` | Optional; defaults apply | Server-side session lifetime |
-| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` | Required only to send password-reset emails | Brevo transactional email |
+| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` | Required only to send password-reset, teacher setup, and registration-decision emails | Brevo transactional email |
 | `BREVO_SENDER_NAME` | Optional; defaults to `E-Index` | Brevo sender display name |
 
 At startup, the API reports missing or invalid variable **names only**, then exits if required configuration is absent. `/api/health` returns `200` with `{ "ok": true, "db": true }` when MySQL responds, or `503` with `{ "ok": false, "db": false, "reason": "<safe-code>" }` when it does not. The server logs a sanitized database error code and message, without connection credentials, host, or stack trace.
 
-Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. The backend reads the existing `CORS_ORIGINS` setting (comma-separated) for allowed app origins; `FRONTEND_ORIGINS` is supported as a fallback. Include the exact dev origin you browse from (for example, `http://192.168.1.12:5173`) and the deployed app origin(s). `FRONTEND_URL` supplies the fallback origin for password-reset links. Keep secrets in backend environment configuration, never frontend code.
+Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. It sends password-reset messages, teacher setup links, and registration-decision notices. The backend reads the existing `CORS_ORIGINS` setting (comma-separated) for allowed app origins; `FRONTEND_ORIGINS` is supported as a fallback. Include the exact dev origin you browse from (for example, `http://192.168.1.12:5173`) and the deployed app origin(s). `FRONTEND_URL` supplies the fallback origin for email links. Keep secrets in backend environment configuration, never frontend code.
 
 The currently configured Aiven database is MySQL 8.4.8. The existing `eindex_*` application tables were found during read-only inspection and contained no user, teacher, student, class, attendance, grade, notification, or audit records at that time. The app does not seed or reset records. Provision real accounts and academic records through HeidiSQL.
 
@@ -60,9 +60,11 @@ For production, configure the same DB and Brevo variables in the hosting provide
 
 ## Authentication and data behavior
 
-- Teacher registration creates a pending database account; an administrator must approve it.
+- Public teacher registration accepts the college options in `shared/teacher-colleges.js`. This is the provisional ESSU–Guiuan Campus list and is shared by the frontend and backend; update that file if the university confirms changes. Registration creates a pending database account, and an administrator must approve it before the teacher can sign in.
+- Registration validates the password confirmation on both the frontend and backend. Duplicate emails are normalized and rejected.
+- Administrators review the applicant's name, email, and college. Decisions retain the in-app notification and audit record and also attempt an email notice through Brevo.
 - Administrator accounts must be provisioned by an authorized operator. The frontend has no default or sample administrator credentials.
-- Login checks the stored bcrypt password, account status, and requested portal role. Sessions use random server-side tokens stored as hashes and HttpOnly cookies.
+- Login checks the stored bcrypt password and account status, then uses the stored role to open the appropriate portal. Sessions use random server-side tokens stored as hashes and HttpOnly cookies.
 - Password reset uses single-use, hashed tokens that expire after 30 minutes. Responses do not disclose whether an email is registered, and requests are rate limited.
 - Teacher data endpoints restrict records to the signed-in teacher and assigned classes. Administrative endpoints require the administrator role.
 - Removing a teacher from the UI deactivates the account and retains its related academic records.

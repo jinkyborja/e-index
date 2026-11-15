@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { env } from './env.js';
 import { EmailDeliveryError, sendPasswordResetEmail } from './brevo.js';
 import { asyncHandler, HttpError } from './errors.js';
+import { TEACHER_COLLEGES } from '../../shared/teacher-colleges.js';
 
 export const SESSION_COOKIE = 'eindex.sid';
 const PASSWORD_ROUNDS = 12;
@@ -19,10 +20,14 @@ const loginSchema = z.object({
 });
 
 const registrationSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
-  department: z.string().trim().min(1).max(120),
-  password: z.string().min(8).max(128)
+  name: z.string().trim().min(1, 'Enter your full name.').max(120, 'Full name must be 120 characters or fewer.'),
+  email: z.string().trim().email('Enter a valid school email address.').max(254, 'Email must be 254 characters or fewer.').transform(value => value.toLowerCase()),
+  department: z.enum(TEACHER_COLLEGES, { errorMap: () => ({ message: 'Select a college / department.' }) }),
+  password: z.string().min(8, 'Password must be at least 8 characters.').max(128, 'Password must be 128 characters or fewer.'),
+  confirmPassword: z.string().min(8, 'Confirm your password.').max(128, 'Password must be 128 characters or fewer.')
+}).refine(input => input.password === input.confirmPassword, {
+  path: ['confirmPassword'],
+  message: 'The passwords do not match.'
 });
 
 const forgotPasswordSchema = z.object({
@@ -138,42 +143,50 @@ export function createAuthRouter(prisma, {
   router.post('/register', loginLimiter, asyncHandler(async (req, res) => {
     const input = registrationSchema.parse(req.body);
     const passwordHash = await bcrypt.hash(input.password, PASSWORD_ROUNDS);
-    const result = await prisma.$transaction(async tx => {
-      const existing = await tx.user.findUnique({ where: { email: input.email }, select: { id: true } });
-      if (existing) throw new HttpError(409, 'EMAIL_IN_USE', 'An account or registration with this email already exists.');
+    let result;
+    try {
+      result = await prisma.$transaction(async tx => {
+        const existing = await tx.user.findUnique({ where: { email: input.email }, select: { id: true } });
+        if (existing) throw new HttpError(409, 'EMAIL_IN_USE', 'An account or registration with this email already exists.');
 
-      const user = await tx.user.create({
-        data: {
-          email: input.email,
-          passwordHash,
-          fullName: input.name,
-          department: input.department,
-          role: 'TEACHER',
-          status: 'PENDING',
-          notificationPreferences: { updates: true, attendance: true, announcements: true }
-        }
-      });
-      const registration = await tx.teacherRegistration.create({ data: { userId: user.id } });
-      const admins = await tx.user.findMany({ where: { role: 'ADMIN', status: 'APPROVED' }, select: { id: true } });
-      if (admins.length) {
-        await tx.notification.createMany({
-          data: admins.map(admin => ({
-            userId: admin.id,
-            title: 'Teacher registration pending',
-            detail: `${user.fullName} requested teacher access.`
-          }))
+        const user = await tx.user.create({
+          data: {
+            email: input.email,
+            passwordHash,
+            fullName: input.name,
+            department: input.department,
+            role: 'TEACHER',
+            status: 'PENDING',
+            notificationPreferences: { updates: true, attendance: true, announcements: true }
+          }
         });
-      }
-      await tx.auditLog.create({
-        data: {
-          type: 'REGISTER',
-          action: user.fullName,
-          detail: 'Submitted teacher registration',
-          target: user.email
+        const registration = await tx.teacherRegistration.create({ data: { userId: user.id } });
+        const admins = await tx.user.findMany({ where: { role: 'ADMIN', status: 'APPROVED' }, select: { id: true } });
+        if (admins.length) {
+          await tx.notification.createMany({
+            data: admins.map(admin => ({
+              userId: admin.id,
+              title: 'Teacher registration pending',
+              detail: `${user.fullName} requested teacher access.`
+            }))
+          });
         }
+        await tx.auditLog.create({
+          data: {
+            type: 'REGISTER',
+            action: user.fullName,
+            detail: 'Submitted teacher registration',
+            target: user.email
+          }
+        });
+        return registration;
       });
-      return registration;
-    });
+    } catch (error) {
+      if (error?.code === 'P2002') {
+        throw new HttpError(409, 'EMAIL_IN_USE', 'An account or registration with this email already exists.');
+      }
+      throw error;
+    }
 
     res.status(201).json({
       message: 'Registration submitted. An administrator must approve your account.',

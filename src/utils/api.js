@@ -1,9 +1,10 @@
 export class ApiError extends Error {
-  constructor(message, code = 'API_ERROR', status = 0) {
+  constructor(message, code = 'API_ERROR', status = 0, details = null) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -26,7 +27,8 @@ export async function apiRequest(path, { method = 'GET', body } = {}) {
     throw new ApiError(
       payload?.error?.message || 'The request could not be completed.',
       payload?.error?.code || 'API_ERROR',
-      response.status
+      response.status,
+      payload?.error?.details || null
     );
   }
 

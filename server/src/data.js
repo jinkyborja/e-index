@@ -3,9 +3,14 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { env } from './env.js';
-import { EmailDeliveryError, sendPasswordResetEmail } from './brevo.js';
+import {
+  EmailDeliveryError,
+  sendPasswordResetEmail,
+  sendTeacherRegistrationDecisionEmail as deliverTeacherRegistrationDecisionEmail
+} from './brevo.js';
 import { asyncHandler, HttpError } from './errors.js';
 import { requireAuth, requireRole } from './auth.js';
+import { TEACHER_COLLEGES } from '../../shared/teacher-colleges.js';
 
 const roleName = role => role === 'ADMIN' ? 'admin' : 'teacher';
 const displayStatus = status => status.toLowerCase().replace(/^\w/, letter => letter.toUpperCase());
@@ -13,11 +18,12 @@ const formatDate = value => value ? new Date(value).toLocaleDateString('en-US', 
 const formatTime = value => value ? new Date(value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—';
 const attendanceStatus = status => displayStatus(status);
 const attendanceStatusValue = z.enum(['PRESENT', 'LATE', 'ABSENT', 'EXCUSED']);
+const collegeSchema = z.enum(TEACHER_COLLEGES, { errorMap: () => ({ message: 'Select a college / department.' }) });
 
 const profileSchema = z.object({
   fullName: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
-  department: z.string().trim().min(1).max(120),
+  department: z.string().trim().min(1, 'Select a college / department.').max(120),
   photo: z.string().max(4_000_000).optional()
 });
 
@@ -42,6 +48,15 @@ function auditData(user, type, detail, target) {
 
 function hashResetToken(token) {
   return createHash('sha256').update(token).digest('hex');
+}
+
+function loginUrlFor(req) {
+  const origin = req.get('origin');
+  const sameOrigin = origin === `${req.protocol}://${req.get('host')}`;
+  const baseOrigin = origin && (env.allowedOrigins.includes(origin) || sameOrigin)
+    ? origin
+    : env.FRONTEND_URL || env.allowedOrigins[0];
+  return new URL('/login', `${baseOrigin}/`).toString();
 }
 
 async function createStaffId(tx) {
@@ -76,7 +91,9 @@ function serializeTeacher(user) {
   };
 }
 
-export function createDataRouter(prisma) {
+export function createDataRouter(prisma, {
+  sendTeacherRegistrationDecisionEmail = deliverTeacherRegistrationDecisionEmail
+} = {}) {
   const router = Router();
   router.use(requireAuth);
 
@@ -248,6 +265,11 @@ export function createDataRouter(prisma) {
 
   router.patch('/profile', asyncHandler(async (req, res) => {
     const input = profileSchema.parse(req.body);
+    if (req.user.role === 'TEACHER'
+      && input.department !== req.user.department
+      && !TEACHER_COLLEGES.includes(input.department)) {
+      throw new HttpError(400, 'INVALID_COLLEGE', 'Select a college / department from the list.');
+    }
     const updated = await prisma.user.update({
       where: { id: req.user.id },
       data: { fullName: input.fullName, email: input.email, department: input.department, ...(input.photo !== undefined ? { photo: input.photo } : {}) }
@@ -288,7 +310,7 @@ export function createDataRouter(prisma) {
     const input = z.object({
       fullName: z.string().trim().min(1).max(120),
       email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
-      department: z.string().trim().min(1).max(120),
+      department: collegeSchema,
       staffId: z.string().trim().regex(/^\d{1,32}$/),
       status: z.enum(['APPROVED', 'PENDING'])
     }).parse(req.body);
@@ -358,6 +380,9 @@ export function createDataRouter(prisma) {
       where: { role: 'TEACHER', OR: [{ id: req.params.identifier }, { staffId: req.params.identifier }] }
     });
     if (!teacher) throw new HttpError(404, 'NOT_FOUND', 'The teacher account was not found.');
+    if (input.department !== teacher.department && !TEACHER_COLLEGES.includes(input.department)) {
+      throw new HttpError(400, 'INVALID_COLLEGE', 'Select a college / department from the list.');
+    }
     const updated = await prisma.$transaction(async tx => {
       const account = await tx.user.update({
         where: { id: teacher.id },
@@ -416,7 +441,7 @@ export function createDataRouter(prisma) {
 
   router.patch('/registrations/:id', requireRole('ADMIN'), asyncHandler(async (req, res) => {
     const { status } = z.object({ status: z.enum(['APPROVED', 'REJECTED']) }).parse(req.body);
-    await prisma.$transaction(async tx => {
+    const result = await prisma.$transaction(async tx => {
       const registration = await tx.teacherRegistration.findUnique({
         where: { id: req.params.id },
         include: { user: true }
@@ -433,7 +458,7 @@ export function createDataRouter(prisma) {
         data: { status, decidedAt: new Date() }
       });
       if (decision.count !== 1) throw new HttpError(409, 'ALREADY_DECIDED', 'This registration has already been reviewed.');
-      await tx.user.update({
+      const user = await tx.user.update({
         where: { id: registration.userId },
         data: { status, ...(staffId ? { staffId } : {}) }
       });
@@ -447,8 +472,28 @@ export function createDataRouter(prisma) {
       await tx.auditLog.create({
         data: auditData(req.user, status, `${displayStatus(status)} teacher registration for ${registration.user.fullName}`, registration.user.email)
       });
+      return { registration, user };
     });
-    res.status(204).end();
+
+    let emailNotification = 'submitted';
+    try {
+      await sendTeacherRegistrationDecisionEmail(result.registration.user.email, {
+        status,
+        fullName: result.registration.user.fullName,
+        department: result.registration.user.department,
+        staffId: result.user.staffId || '',
+        loginUrl: loginUrlFor(req)
+      });
+    } catch (error) {
+      emailNotification = 'failed';
+      if (error instanceof EmailDeliveryError) {
+        console.error('Brevo registration decision email failed:', error.code, error.status || '');
+      } else {
+        console.error('Brevo registration decision email failed.');
+      }
+    }
+
+    res.json({ emailNotification });
   }));
 
   router.patch('/attendance/:id', requireRole('TEACHER'), asyncHandler(async (req, res) => {
