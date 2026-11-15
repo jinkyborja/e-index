@@ -71,6 +71,10 @@
   let selectedStudent = null;
   let teacherRoleFilter = 'All Roles';
   let teacherStatusFilter = 'All Statuses';
+  let registrationSearch = '';
+  let registrationCollegeFilter = 'All Colleges';
+  let registrationStatusFilter = 'Pending';
+  let selectedRegistrationIds = [];
   let studentProgramFilter = 'All Programs';
   let studentYearFilter = 'All Year Levels';
   let attendanceSection = 'All Sections';
@@ -88,6 +92,15 @@
   let collegeActivationCampusConfirmed = false;
   let collegeActivationReference = '';
   let collegeActivationSubmitting = false;
+  let teacherFormSubmitting = false;
+  let bulkRegistrationSubmitting = false;
+  let registrationDecisionSubmitting = false;
+  let teacherFieldErrors = {};
+  let teacherFormValid = false;
+  let portalDataLoading = false;
+  let portalDataLoaded = false;
+  let portalDataError = '';
+  let portalDataLoadCount = 0;
   let formValues = {};
   let confirmation = null;
   let selectedSection = 'All Sections';
@@ -179,9 +192,24 @@
   $: registrations = $appData.registrations;
   $: colleges = $appData.colleges;
   $: grades = $appData.grades;
+  $: registrationCollegeOptions = [...new Map(registrations.map(item => {
+    const label = item.collegeName || item.department || '';
+    return [item.collegeId || `legacy:${label}`, { value: item.collegeId || `legacy:${label}`, label }];
+  }).filter(([, option]) => option.label)).values()].sort((a, b) => a.label.localeCompare(b.label));
   $: filteredTeachers = teachers.filter(t => `${t.name} ${t.email} ${t.department} ${t.id}`.toLowerCase().includes(searchText.toLowerCase())
     && (teacherRoleFilter === 'All Roles' || t.role === teacherRoleFilter)
     && (teacherStatusFilter === 'All Statuses' || t.status === teacherStatusFilter));
+  $: filteredRegistrations = registrations.filter(registration => {
+    const query = registrationSearch.trim().toLowerCase();
+    const college = registration.collegeId || `legacy:${registration.collegeName || registration.department || ''}`;
+    return `${registration.name} ${registration.email}`.toLowerCase().includes(query)
+      && (registrationCollegeFilter === 'All Colleges' || college === registrationCollegeFilter)
+      && (registrationStatusFilter === 'All Statuses' || registration.status === registrationStatusFilter);
+  });
+  $: visiblePendingRegistrations = filteredRegistrations.filter(registration => registration.status === 'Pending');
+  $: selectedPendingRegistrations = registrations.filter(registration => registration.status === 'Pending' && selectedRegistrationIds.includes(registration.id));
+  $: allVisiblePendingRegistrationsSelected = visiblePendingRegistrations.length > 0
+    && visiblePendingRegistrations.every(registration => selectedRegistrationIds.includes(registration.id));
   $: filteredStudents = students.filter(s => `${s.name} ${s.id} ${s.program}`.toLowerCase().includes(searchText.toLowerCase())
     && (studentProgramFilter === 'All Programs' || s.program === studentProgramFilter)
     && (studentYearFilter === 'All Year Levels' || s.year === studentYearFilter));
@@ -190,6 +218,8 @@
   $: teacherCount = teachers.filter(t => t.role === 'Teacher' && t.status === 'Approved' && t.active !== false).length;
   $: studentCount = students.filter(s => s.status === 'Active').length;
   $: pendingCount = registrations.filter(r => r.status === 'Pending').length;
+  $: rejectedRegistrationCount = registrations.filter(r => r.status === 'Rejected').length;
+  $: teacherFormValid = isTeacherFormValid(formValues);
   $: inactiveCount = teachers.filter(t => t.status === 'Inactive').length;
   $: rejectedCount = teachers.filter(t => t.status === 'Rejected').length;
   $: reportPeriods = [...new Set(grades.map(item => item.period).filter(Boolean))];
@@ -461,11 +491,47 @@
     }
   }
   async function refreshPortalData() {
-    const data = await apiRequest('/api/data');
-    setAppData(data);
-    const key = currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
-    const settings = data.settings?.[key];
-    if (settings?.notifications) notificationPreferences = { ...settings.notifications };
+    portalDataLoadCount += 1;
+    portalDataLoading = true;
+    portalDataError = '';
+    try {
+      const data = await apiRequest('/api/data');
+      setAppData(data);
+      selectedRegistrationIds = selectedRegistrationIds.filter(id => data.registrations?.some(registration => registration.id === id && registration.status === 'Pending'));
+      const key = currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
+      const settings = data.settings?.[key];
+      if (settings?.notifications) notificationPreferences = { ...settings.notifications };
+      portalDataLoaded = true;
+      portalDataError = '';
+    } catch (error) {
+      portalDataError = error.message || 'Unable to load portal data.';
+      throw error;
+    } finally {
+      portalDataLoadCount -= 1;
+      portalDataLoading = portalDataLoadCount > 0;
+    }
+  }
+  function isTeacherFormValid(values) {
+    const email = String(values.email || '').trim();
+    return Boolean(
+      String(values.name || '').trim()
+      && /^\d+$/.test(String(values.id || '').trim())
+      && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      && String(values.collegeId || '').trim()
+      && ['APPROVED', 'PENDING'].includes(String(values.status || '').toUpperCase())
+    );
+  }
+  function updateTeacherFieldError(event, validate = false) {
+    const field = event.currentTarget;
+    const error = validate && !field.validity.valid ? field.validationMessage : '';
+    teacherFieldErrors = { ...teacherFieldErrors, [field.name]: error };
+  }
+  async function retryPortalData() {
+    try {
+      await refreshPortalData();
+    } catch (error) {
+      notify(error.message);
+    }
   }
   async function mutatePortalData(path, options, successMessage) {
     try {
@@ -556,7 +622,7 @@
     showModal = true;
   }
   function closeModal() {
-    if (collegeActivationSubmitting) return;
+    if (collegeActivationSubmitting || teacherFormSubmitting || bulkRegistrationSubmitting || registrationDecisionSubmitting) return;
     showModal = false;
     modalRecord = null;
     confirmation = null;
@@ -564,12 +630,15 @@
     collegeActivationNameConfirmed = false;
     collegeActivationCampusConfirmed = false;
     collegeActivationReference = '';
+    teacherFieldErrors = {};
   }
   function openTeacherForm(record = null) {
     modalRecord = record;
     modalTitle = record ? 'Edit Teacher' : 'Add Teacher';
     modalMode = 'teacher-form';
     formValues = record ? { ...record } : { name: '', id: '', collegeId: '', email: '', role: 'Teacher', status: 'Approved', active: true };
+    teacherFieldErrors = {};
+    teacherFormSubmitting = false;
     showModal = true;
   }
   function openCollegeActivation(college) {
@@ -599,12 +668,13 @@
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     if (modalMode === 'teacher-form') {
-      const email = String(values.email).trim().toLowerCase();
-      const staffId = String(values.id).trim();
-      if (!String(values.name).trim() || !/^\d+$/.test(staffId) || !String(values.collegeId || '').trim()) {
-        notify('Enter a name, numeric staff ID, and select an active college.');
+      const email = String(values.email || '').trim().toLowerCase();
+      const staffId = String(values.id || '').trim();
+      if (!isTeacherFormValid(values)) {
+        notify('Enter a full name, numeric staff ID, valid email address, active college, and account status.');
         return;
       }
+      if (teacherFormSubmitting) return;
       const body = {
         fullName: String(values.name).trim(),
         staffId,
@@ -613,12 +683,20 @@
         status: String(values.status).toUpperCase()
       };
       const identifier = modalRecord?.accountId || modalRecord?.id;
-      const saved = await mutatePortalData(
-        modalRecord ? `/api/data/teachers/${encodeURIComponent(identifier)}` : '/api/data/teachers',
-        { method: modalRecord ? 'PATCH' : 'POST', body },
-        modalRecord ? 'Teacher account updated.' : 'Teacher account added. A password reset email was sent.'
-      );
-      if (saved) closeModal();
+      teacherFormSubmitting = true;
+      try {
+        const saved = await mutatePortalData(
+          modalRecord ? `/api/data/teachers/${encodeURIComponent(identifier)}` : '/api/data/teachers',
+          { method: modalRecord ? 'PATCH' : 'POST', body },
+          modalRecord ? 'Teacher account updated.' : 'Teacher account added. A password reset email was sent.'
+        );
+        if (saved) {
+          teacherFormSubmitting = false;
+          closeModal();
+        }
+      } finally {
+        teacherFormSubmitting = false;
+      }
       return;
     }
     if (modalMode === 'college-activate') {
@@ -657,9 +735,45 @@
     notify('This form is not available.');
   }
   async function runConfirmation() {
-    if (!confirmation) return;
+    if (!confirmation || bulkRegistrationSubmitting || registrationDecisionSubmitting) return;
     const { type, record } = confirmation;
-    if (type === 'delete-teacher' || type === 'teacher-status') {
+    if (type === 'bulk-registration-approve') {
+      const approvedIds = [];
+      const failedRequests = [];
+      let failedEmailNotifications = 0;
+      bulkRegistrationSubmitting = true;
+      try {
+        for (const registration of record) {
+          try {
+            const result = await apiRequest(`/api/data/registrations/${encodeURIComponent(registration.id)}`, {
+              method: 'PATCH',
+              body: { status: 'APPROVED' }
+            });
+            approvedIds.push(registration.id);
+            if (result?.emailNotification !== 'submitted') failedEmailNotifications += 1;
+          } catch (error) {
+            failedRequests.push(error.message);
+          }
+        }
+        selectedRegistrationIds = selectedRegistrationIds.filter(id => !approvedIds.includes(id));
+        bulkRegistrationSubmitting = false;
+        closeModal();
+        bulkRegistrationSubmitting = true;
+        let refreshMessage = '';
+        try {
+          await refreshPortalData();
+        } catch (error) {
+          refreshMessage = ` Portal data could not refresh: ${error.message}`;
+        }
+        const messages = [`${approvedIds.length} of ${record.length} registration(s) approved.`];
+        if (failedEmailNotifications) messages.push(`Email notification could not be submitted for ${failedEmailNotifications} applicant(s).`);
+        if (failedRequests.length) messages.push(`${failedRequests.length} registration(s) could not be updated: ${failedRequests[0]}`);
+        if (refreshMessage) messages.push(refreshMessage.trim());
+        notify(messages.join(' '));
+      } finally {
+        bulkRegistrationSubmitting = false;
+      }
+    } else if (type === 'delete-teacher' || type === 'teacher-status') {
       const active = type === 'teacher-status' && record.status !== 'Approved';
       const saved = await mutatePortalData(
         `/api/data/teachers/${encodeURIComponent(record.accountId || record.id)}/status`,
@@ -697,12 +811,16 @@
       }
     } else if (type === 'registration-approve' || type === 'registration-reject') {
       const status = type === 'registration-approve' ? 'APPROVED' : 'REJECTED';
+      registrationDecisionSubmitting = true;
       try {
         const result = await apiRequest(`/api/data/registrations/${encodeURIComponent(record.id)}`, {
           method: 'PATCH',
           body: { status }
         });
+        selectedRegistrationIds = selectedRegistrationIds.filter(id => id !== record.id);
+        registrationDecisionSubmitting = false;
         closeModal();
+        registrationDecisionSubmitting = true;
         let refreshMessage = '';
         try {
           await refreshPortalData();
@@ -715,10 +833,41 @@
         notify(`Registration ${status.toLowerCase()}. ${emailMessage}${refreshMessage}`);
       } catch (error) {
         notify(error.message);
+      } finally {
+        registrationDecisionSubmitting = false;
       }
     }
   }
+  function toggleRegistrationSelection(id) {
+    selectedRegistrationIds = selectedRegistrationIds.includes(id)
+      ? selectedRegistrationIds.filter(selectedId => selectedId !== id)
+      : [...selectedRegistrationIds, id];
+  }
+  function toggleAllVisibleRegistrations() {
+    const visibleIds = visiblePendingRegistrations.map(registration => registration.id);
+    if (!visibleIds.length) return;
+    selectedRegistrationIds = allVisiblePendingRegistrationsSelected
+      ? selectedRegistrationIds.filter(id => !visibleIds.includes(id))
+      : [...new Set([...selectedRegistrationIds, ...visibleIds])];
+  }
+  function startBulkRegistrationApproval() {
+    if (!selectedPendingRegistrations.length) {
+      notify('Select at least one pending registration to approve.');
+      return;
+    }
+    askConfirmation(
+      'bulk-registration-approve',
+      selectedPendingRegistrations,
+      'Approve Selected Registrations',
+      `Approve ${selectedPendingRegistrations.length} selected teacher registration(s)? Each applicant will receive an email notification.`
+    );
+  }
   function startRegistrationDecision(record, approve) {
+    if (registrationDecisionSubmitting || bulkRegistrationSubmitting) return;
+    if (record.status !== 'Pending') {
+      notify('Only pending registrations can be approved or rejected.');
+      return;
+    }
     askConfirmation(
       approve ? 'registration-approve' : 'registration-reject',
       record,
@@ -1140,8 +1289,72 @@
         </section>
 
       {:else if page === 'Pending Approvals' && isAdmin}
-        <PageTitle icon={Clock3} title="Pending Approvals" subtitle="Review sign-up requests before granting account access." action="Approve Selected" onAction={() => { const selected = registrations.filter(item => item.status === 'Pending' && selectedRows.includes(item.id)); if (selected.length !== 1) notify('Select one pending registration to approve.'); else startRegistrationDecision(selected[0], true); }}/>
-        <section class="panel approvals-panel"><div class="approval-heading"><div><h3>Teacher Registrations</h3><p>{pendingCount} registration(s) awaiting review</p></div><div class="approval-illustration"><ClipboardCheck size={78}/></div></div>{#if pendingCount}<div class="table-scroll"><table><thead><tr><th><input type="checkbox" checked={registrations.filter(r => r.status === 'Pending').length > 0 && registrations.filter(r => r.status === 'Pending').every(r => selectedRows.includes(r.id))} onchange={() => toggleAllRows(registrations.filter(r => r.status === 'Pending'))} aria-label="Select all pending registrations"/></th><th>Name</th><th>Email</th><th>College / Department</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>{#each registrations.filter(r => r.status === 'Pending') as registration}<tr><td><input type="checkbox" checked={selectedRows.includes(registration.id)} onchange={() => toggleRow(registration.id)} aria-label={`Select ${registration.name}`}/></td><td><button class="table-link" onclick={() => openRegistration(registration)}>{registration.name}</button></td><td>{registration.email}</td><td>{registration.collegeName || registration.department}{#if registration.collegeIsActive === false}<small>Inactive assignment</small>{/if}</td><td>{registration.submitted}</td><td><button class="outline-btn" onclick={() => startRegistrationDecision(registration, true)}>Approve</button> <button class="outline-btn" onclick={() => startRegistrationDecision(registration, false)}>Reject</button></td></tr>{/each}</tbody></table></div>{:else}<div class="empty-success"><span><Check size={21}/></span><div><strong>All caught up!</strong><small>There are no pending teacher registrations.</small></div></div>{/if}<div class="panel-bottom-note">Showing {pendingCount} of {registrations.length} registrations</div></section>
+        <div class="page-breadcrumb"><span>Administration</span><ChevronRight size={13}/><span>Pending Approvals</span></div>
+        <PageTitle
+          icon={Clock3}
+          title="Pending Approvals"
+          subtitle="Review sign-up requests before granting account access."
+          action="Approve Selected"
+          actionIcon={Check}
+          approvalPage={true}
+          actionDisabled={!selectedPendingRegistrations.length || portalDataLoading || bulkRegistrationSubmitting || registrationDecisionSubmitting}
+          onAction={startBulkRegistrationApproval}
+        />
+        <div class="approval-summary">
+          <article class="approval-summary-card"><span class="approval-summary-icon pending-icon"><Clock3 size={18}/></span><div><small>Pending Registrations</small><strong>{pendingCount}</strong></div></article>
+          <article class="approval-summary-card"><span class="approval-summary-icon approved-icon"><Users size={18}/></span><div><small>Approved Teachers</small><strong>{teacherCount}</strong></div></article>
+          <article class="approval-summary-card"><span class="approval-summary-icon rejected-icon"><XCircle size={18}/></span><div><small>Rejected Requests</small><strong>{rejectedRegistrationCount}</strong></div></article>
+        </div>
+        <section class="panel approvals-panel">
+          <div class="approval-section-heading">
+            <div><h3>Teacher Registrations</h3><p>{pendingCount} registration(s) awaiting review</p></div>
+            {#if bulkRegistrationSubmitting}<span class="approval-refreshing" role="status"><RefreshCw size={14}/>Processing approvals...</span>{:else if registrationDecisionSubmitting}<span class="approval-refreshing" role="status"><RefreshCw size={14}/>Saving decision...</span>{:else if portalDataLoading && portalDataLoaded}<span class="approval-refreshing" role="status"><RefreshCw size={14}/>Refreshing...</span>{/if}
+          </div>
+          {#if portalDataError && portalDataLoaded}
+            <div class="approval-load-warning" role="alert"><span>{portalDataError} Showing the last loaded data.</span><button class="text-link" onclick={retryPortalData}>Retry</button></div>
+          {/if}
+          {#if !portalDataLoaded}
+            {#if portalDataLoading}
+              <div class="approval-loading" role="status"><RefreshCw size={20}/>Loading registrations...</div>
+            {:else}
+              <div class="approval-load-error" role="alert"><p>{portalDataError || 'Registrations could not be loaded.'}</p><button class="outline-btn" onclick={retryPortalData}>Try Again</button></div>
+            {/if}
+          {:else}
+            <div class="approvals-toolbar">
+              <label class="search-field"><Search size={16}/><input bind:value={registrationSearch} placeholder="Search teacher name or email..." aria-label="Search teacher name or email"/></label>
+              <select bind:value={registrationCollegeFilter} aria-label="Filter by college"><option>All Colleges</option>{#each registrationCollegeOptions as college}<option value={college.value}>{college.label}</option>{/each}</select>
+              <select bind:value={registrationStatusFilter} aria-label="Filter by registration status"><option>Pending</option><option>Approved</option><option>Rejected</option><option>All Statuses</option></select>
+              {#if selectedPendingRegistrations.length}<span class="approval-selection-count" aria-live="polite">{selectedPendingRegistrations.length} selected</span>{/if}
+            </div>
+            {#if filteredRegistrations.length}
+              <div class="table-scroll">
+                <table class="approval-table">
+                  <thead><tr>
+                    <th><input type="checkbox" checked={allVisiblePendingRegistrationsSelected} disabled={!visiblePendingRegistrations.length || bulkRegistrationSubmitting || registrationDecisionSubmitting} onchange={toggleAllVisibleRegistrations} aria-label="Select all visible pending registrations"/></th>
+                    <th>Teacher</th><th>College / Department</th><th>Registration Date</th><th>Status</th><th>Actions</th>
+                  </tr></thead>
+                  <tbody>
+                    {#each filteredRegistrations as registration (registration.id)}
+                      <tr>
+                        <td><input type="checkbox" checked={selectedRegistrationIds.includes(registration.id)} disabled={registration.status !== 'Pending' || bulkRegistrationSubmitting || registrationDecisionSubmitting} onchange={() => toggleRegistrationSelection(registration.id)} aria-label={`Select ${registration.name}`}/></td>
+                        <td><div class="approval-teacher"><button class="table-link" onclick={() => openRegistration(registration)}>{registration.name}</button><span>{registration.email}</span></div></td>
+                        <td>{registration.collegeName || registration.department || '—'}{#if registration.collegeIsActive === false}<small class="inactive-assignment-note">Inactive assignment</small>{/if}</td>
+                        <td>{registration.submitted || '—'}</td>
+                        <td><span class="registration-status" class:status-pending={registration.status === 'Pending'} class:status-approved={registration.status === 'Approved'} class:status-rejected={registration.status === 'Rejected'}>{registration.status}</span></td>
+                        <td><div class="approval-row-actions"><button class="approval-action" onclick={() => openRegistration(registration)}><Eye size={14}/>Review</button>{#if registration.status === 'Pending'}<button class="approval-action approval-approve" disabled={bulkRegistrationSubmitting || registrationDecisionSubmitting} onclick={() => startRegistrationDecision(registration, true)}><Check size={14}/>Approve</button><button class="approval-action approval-reject" disabled={bulkRegistrationSubmitting || registrationDecisionSubmitting} onclick={() => startRegistrationDecision(registration, false)}><X size={14}/>Reject</button>{/if}</div></td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+              <div class="panel-bottom-note">Showing {filteredRegistrations.length} of {registrations.length} registrations</div>
+            {:else if registrationStatusFilter === 'Pending' && !registrationSearch.trim() && registrationCollegeFilter === 'All Colleges'}
+              <div class="approvals-empty"><span class="approvals-empty-icon"><ClipboardCheck size={32}/></span><h3>You're all caught up!</h3><p>There are no pending teacher registrations at the moment.</p></div>
+            {:else}
+              <div class="approvals-no-results">No registrations match these filters.</div>
+            {/if}
+          {/if}
+        </section>
 
       {:else if page === 'Audit Log' && isAdmin}
         <PageTitle icon={FileText} title="Audit Log" subtitle="Administrative actions recorded by the system."/>
@@ -1428,8 +1641,45 @@
 {/if}
 
 {#if notice}<div class="toast"><CheckCircle2 size={17}/>{notice}</div>{/if}
-{#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && !collegeActivationSubmitting && closeModal()}><div class:activation-modal={modalMode === 'college-activate'} class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" aria-describedby={modalMode === 'college-activate' ? 'college-activation-description' : undefined} tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" disabled={collegeActivationSubmitting} onclick={closeModal}><X size={18}/></button><div class="modal-symbol">{#if modalMode === 'college-activate'}<Building2 size={22}/>{:else}<Users size={22}/>{/if}</div><h2 id="modal-heading">{modalTitle}</h2>
-  {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>College / Department<select name="collegeId" value={formValues.collegeId || ''} required disabled={collegeChoicesLoading || (activeCollegeChoices.length === 0 && !formValues.collegeId)}>{#if formValues.collegeId && !activeCollegeChoices.some(college => college.id === formValues.collegeId)}<option value={formValues.collegeId}>{formValues.collegeName || formValues.department}{formValues.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}<option value="" disabled>Select your college</option>{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select></label>{#if collegeChoicesError}<p class="auth-error" role="alert">{collegeChoicesError}</p>{/if}<label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
+{#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && !collegeActivationSubmitting && !teacherFormSubmitting && !bulkRegistrationSubmitting && !registrationDecisionSubmitting && closeModal()}><div class:activation-modal={modalMode === 'college-activate'} class:teacher-form-modal={modalMode === 'teacher-form'} class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" aria-describedby={modalMode === 'college-activate' ? 'college-activation-description' : undefined} tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" disabled={collegeActivationSubmitting || teacherFormSubmitting || bulkRegistrationSubmitting || registrationDecisionSubmitting} onclick={closeModal}><X size={18}/></button><div class="modal-symbol">{#if modalMode === 'college-activate'}<Building2 size={22}/>{:else if modalMode === 'teacher-form'}<UserRound size={22}/>{:else}<Users size={22}/>{/if}</div><h2 id="modal-heading">{modalTitle}</h2>
+  {#if modalMode === 'teacher-form'}
+    <p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p>
+    <small class="teacher-form-required-note">All fields are required.</small>
+    <form class="teacher-form" aria-busy={teacherFormSubmitting} onsubmit={submitModalForm}>
+      <fieldset class="teacher-form-fields" disabled={teacherFormSubmitting}>
+        <label class="teacher-form-field">
+          <span>Full Name</span>
+          <span class="teacher-input-wrap"><UserRound size={16}/><input name="name" bind:value={formValues.name} autocomplete="name" required aria-invalid={Boolean(teacherFieldErrors.name)} aria-describedby={teacherFieldErrors.name ? 'teacher-name-error' : undefined} oninput={event => updateTeacherFieldError(event)} onblur={event => updateTeacherFieldError(event, true)}/></span>
+          {#if teacherFieldErrors.name}<small class="teacher-field-error" id="teacher-name-error">{teacherFieldErrors.name}</small>{/if}
+        </label>
+        <label class="teacher-form-field">
+          <span>Staff ID</span>
+          <span class="teacher-input-wrap"><KeyRound size={16}/><input name="id" bind:value={formValues.id} inputmode="numeric" pattern="[0-9]+" title="Use numbers only." required aria-invalid={Boolean(teacherFieldErrors.id)} aria-describedby={teacherFieldErrors.id ? 'teacher-id-error' : undefined} oninput={event => updateTeacherFieldError(event)} onblur={event => updateTeacherFieldError(event, true)}/></span>
+          {#if teacherFieldErrors.id}<small class="teacher-field-error" id="teacher-id-error">{teacherFieldErrors.id}</small>{/if}
+        </label>
+        <label class="teacher-form-field">
+          <span>College / Department</span>
+          <span class="teacher-input-wrap"><Building2 size={16}/><select name="collegeId" bind:value={formValues.collegeId} required disabled={collegeChoicesLoading || (activeCollegeChoices.length === 0 && !formValues.collegeId)} aria-invalid={Boolean(teacherFieldErrors.collegeId)} aria-describedby={teacherFieldErrors.collegeId ? 'teacher-college-error' : undefined} onchange={event => updateTeacherFieldError(event, true)} onblur={event => updateTeacherFieldError(event, true)}>
+            {#if formValues.collegeId && !activeCollegeChoices.some(college => college.id === formValues.collegeId)}<option value={formValues.collegeId}>{formValues.collegeName || formValues.department}{formValues.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}
+            <option value="" disabled>Select a college</option>{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}
+          </select></span>
+          {#if teacherFieldErrors.collegeId}<small class="teacher-field-error" id="teacher-college-error">{teacherFieldErrors.collegeId}</small>{:else if collegeChoicesError}<small class="teacher-field-error" role="alert">{collegeChoicesError}</small>{:else if !collegeChoicesLoading && !activeCollegeChoices.length && !formValues.collegeId}<small class="teacher-field-help">No active colleges are available. Activate a college before adding teachers.</small>{:else if formValues.collegeIsActive === false}<small class="teacher-field-help">The existing inactive college assignment is retained.</small>{/if}
+        </label>
+        <label class="teacher-form-field">
+          <span>Email Address</span>
+          <span class="teacher-input-wrap"><Mail size={16}/><input name="email" bind:value={formValues.email} type="email" autocomplete="email" required aria-invalid={Boolean(teacherFieldErrors.email)} aria-describedby={teacherFieldErrors.email ? 'teacher-email-error' : undefined} oninput={event => updateTeacherFieldError(event)} onblur={event => updateTeacherFieldError(event, true)}/></span>
+          {#if teacherFieldErrors.email}<small class="teacher-field-error" id="teacher-email-error">{teacherFieldErrors.email}</small>{/if}
+        </label>
+        <label class="teacher-form-field teacher-status-field">
+          <span>Account Status</span>
+          <span class="teacher-input-wrap"><ShieldCheck size={16}/><select name="status" bind:value={formValues.status} required><option>Approved</option><option>Pending</option></select></span>
+        </label>
+      </fieldset>
+      <div class="modal-actions">
+        <button class="outline-btn" type="button" disabled={teacherFormSubmitting} onclick={closeModal}>Cancel</button>
+        <button class="primary" type="submit" disabled={!teacherFormValid || teacherFormSubmitting}>{#if teacherFormSubmitting}<RefreshCw size={15}/>Saving...{:else}Save Teacher{/if}</button>
+      </div>
+    </form>
   {:else if modalMode === 'college-activate'}
     <p class="activation-intro" id="college-activation-description">These entries are provisional. Confirm the official name and Guiuan Campus assignment before activation; these attestations are not independent verification.</p>
     <form class="activation-form" aria-busy={collegeActivationSubmitting} onsubmit={submitModalForm}>
@@ -1452,10 +1702,10 @@
         </button>
       </div>
     </form>
-  {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Cancel</button><button class="primary danger-action" onclick={runConfirmation}>Confirm</button></div>
+  {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" disabled={bulkRegistrationSubmitting || registrationDecisionSubmitting} onclick={closeModal}>Cancel</button><button class="primary danger-action" disabled={bulkRegistrationSubmitting || registrationDecisionSubmitting} onclick={runConfirmation}>{#if bulkRegistrationSubmitting}<RefreshCw size={15}/>Approving...{:else if registrationDecisionSubmitting}<RefreshCw size={15}/>Saving...{:else}Confirm{/if}</button></div>
   {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>College / Department</strong><span>{modalRecord.collegeName || modalRecord.department}{modalRecord.collegeIsActive === false ? ' (inactive assignment)' : ''}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
   {:else if modalMode === 'student-view'}<div class="record-details"><p><strong>Student ID</strong><span>{modalRecord.id}</span></p><p><strong>Program / Year</strong><span>{modalRecord.program} · {modalRecord.year}</span></p><p><strong>Enrollment</strong><span>{modalRecord.status}</span></p><p><strong>Class / Section</strong><span>{modalRecord.className || '—'} · {modalRecord.section || '—'}</span></p><p><strong>RFID</strong><span>{modalRecord.rfid || 'Not assigned'}</span></p><strong>Academic records</strong>{#each grades.filter(item => item.studentId === modalRecord.id) as grade}<p><span>{grade.period} · {grade.className}</span><span>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}% average</span></p>{:else}<p>No academic records available.</p>{/each}<strong>Recent attendance</strong>{#each attendance.filter(item => item.id === modalRecord.id).slice(0, 5) as item}<p><span>{item.date}</span><span>{item.status} · {item.time}</span></p>{:else}<p>No attendance history.</p>{/each}</div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
-  {:else if modalMode === 'registration-view'}<div class="record-details"><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>College / Department</strong><span>{modalRecord.collegeName || modalRecord.department}{modalRecord.collegeIsActive === false ? ' (inactive assignment)' : ''}</span></p><p><strong>Submitted</strong><span>{modalRecord.submitted}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="outline-btn" onclick={() => startRegistrationDecision(modalRecord, false)}>Reject</button><button class="primary" onclick={() => startRegistrationDecision(modalRecord, true)}>Approve</button></div>
+  {:else if modalMode === 'registration-view'}<div class="record-details"><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>College / Department</strong><span>{modalRecord.collegeName || modalRecord.department}{modalRecord.collegeIsActive === false ? ' (inactive assignment)' : ''}</span></p><p><strong>Submitted</strong><span>{modalRecord.submitted || '—'}</span></p><p><strong>Status</strong><span>{modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button>{#if modalRecord.status === 'Pending'}<button class="outline-btn" onclick={() => startRegistrationDecision(modalRecord, false)}>Reject</button><button class="primary" onclick={() => startRegistrationDecision(modalRecord, true)}>Approve</button>{/if}</div>
   {:else if modalMode === 'class-view'}{#if modalRecord}<div class="record-details"><p><strong>Course</strong><span>{modalRecord.course}</span></p><p><strong>Year level</strong><span>{modalRecord.year}</span></p><p><strong>Schedule</strong><span>{modalRecord.schedule}</span></p><strong>Sections</strong>{#each modalRecord.sectionNames as section}<p><span>{section}</span><span>{students.filter(student => student.className === modalRecord.name && student.section === section).length} students</span></p>{/each}</div>{:else}<p>No class details are available.</p>{/if}<div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
   {:else}<p>No additional details are available for this record.</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>{/if}</div></div>{/if}
 

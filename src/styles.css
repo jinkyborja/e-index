@@ -268,3 +268,107 @@
 @media(max-width:480px){.teacher-accounts-page>.page-title{flex-wrap:wrap}.teacher-accounts-page>.page-title .page-title-main{min-width:0}.teacher-accounts-page>.page-title .primary{margin-left:auto}.college-choices-heading{align-items:flex-start}.college-choice-count{display:none}.teacher-toolbar{grid-template-columns:minmax(0,1fr)}.teacher-search{grid-column:auto}.teacher-toolbar .export-teachers{grid-column:auto}.teacher-toolbar .bulk-action-select{grid-column:auto}.teacher-table-footer{gap:8px;font-size:9px}.activation-modal{padding:19px}.activation-modal .modal-actions>*{flex:1}}
 @media(prefers-reduced-motion:reduce){.activation-modal .modal-actions .activation-busy svg{animation:none}}
 
+.page-breadcrumb{display:flex;align-items:center;gap:7px;margin:0 0 -7px;color:#8a808c;font-size:10px}
+.page-breadcrumb span:last-child{color:#5d4c60;font-weight:600}
+.page-breadcrumb svg{color:#b4aab5}
+.page-title.approval-page-title{margin-bottom:2px}
+.page-title.approval-page-title .primary{min-height:39px;padding:0 15px;border-radius:9px;background:#741745;box-shadow:none;font-size:10px}
+.page-title.approval-page-title .primary:hover:not(:disabled){background:#842051}
+.page-title.approval-page-title .primary:disabled{color:#fff;background:#b9adb6;cursor:not-allowed}
+.page-title.approval-page-title .primary svg{flex:none}
+.approval-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:0 0 16px}
+.approval-summary-card{display:flex;align-items:center;gap:12px;min-height:76px;padding:14px 16px;border:1px solid #eee8ef;border-radius:11px;background:#fff;box-shadow:0 3px 11px #2b1c2a08}
+.approval-summary-icon{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:10px}
+.approval-summary-icon.pending-icon{color:#8e5a0e;background:#fff5e3}
+.approval-summary-icon.approved-icon{color:#741745;background:#f8eaf1}
+.approval-summary-icon.rejected-icon{color:#a9354c;background:#fff0f1}
+.approval-summary-card>div{display:grid;gap:4px}
+.approval-summary-card small{color:#817883;font-size:10px;font-weight:500}
+.approval-summary-card strong{color:#352739;font:700 19px 'Plus Jakarta Sans',sans-serif}
+.approvals-panel{padding:18px 20px 11px;overflow:hidden}
+.approval-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
+.approval-section-heading h3{margin:0;color:#352739;font:700 14px 'Plus Jakarta Sans',sans-serif}
+.approval-section-heading p{margin:5px 0 0;color:#837987;font-size:10px}
+.approval-refreshing{display:inline-flex;align-items:center;gap:6px;color:#7a6d7d;font-size:10px}
+.approval-refreshing svg,.approval-loading svg{animation:approval-spin 1.2s linear infinite}
+.approval-load-warning{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 13px;padding:10px 12px;border:1px solid #f0d7dc;border-radius:8px;color:#8c3446;background:#fff8f8;font-size:10px;line-height:1.5}
+.approval-load-warning .text-link{flex:none}
+.approvals-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,.55fr) minmax(145px,.45fr) auto;align-items:center;gap:9px;margin-bottom:13px}
+.approvals-toolbar .search-field{display:flex;align-items:center;gap:8px;min-width:0;height:38px;padding:0 11px;border:1px solid #e9e3eb;border-radius:8px;color:#928995;background:#fff}
+.approvals-toolbar .search-field:focus-within{border-color:#a8587d;outline:2px solid #a8587d20}
+.approvals-toolbar .search-field input{width:100%;min-width:0;border:0;outline:0;color:#3b303e;background:transparent;font:400 10px 'DM Sans',sans-serif}
+.approvals-toolbar .search-field input::placeholder{color:#9a929d}
+.approvals-toolbar>select{min-width:0;height:38px;padding:0 10px;border:1px solid #e9e3eb;border-radius:8px;color:#514755;background:#fff;font:500 10px 'DM Sans',sans-serif}
+.approvals-toolbar>select:focus-visible{outline:2px solid #a8587d;outline-offset:1px}
+.approval-selection-count{color:#741745;font-size:10px;font-weight:600;white-space:nowrap}
+.approval-table{min-width:830px}
+.approval-table th:first-child,.approval-table td:first-child{width:38px;text-align:center}
+.approval-table td{height:61px;vertical-align:middle}
+.approval-table td>input[type="checkbox"],.approval-table th>input[type="checkbox"]{width:15px;height:15px;accent-color:#741745}
+.approval-table td>input[type="checkbox"]:disabled{opacity:.42}
+.approval-teacher{display:grid;gap:5px;min-width:150px}
+.approval-teacher .table-link{justify-self:start;color:#3f3343;font-size:11px;font-weight:600}
+.approval-teacher span{color:#847b88;font-size:9px}
+.inactive-assignment-note{display:block;margin-top:4px;color:#8a7586;font-size:9px}
+.registration-status{display:inline-flex;align-items:center;min-height:23px;padding:0 8px;border-radius:20px;font-size:9px;font-weight:600;white-space:nowrap}
+.registration-status.status-pending{color:#885b12;background:#fff3dc}
+.registration-status.status-approved{color:#236e4c;background:#e8f5ed}
+.registration-status.status-rejected{color:#a33b4c;background:#fff0f1}
+.approval-row-actions{display:flex;align-items:center;gap:5px}
+.approval-action{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:29px;padding:0 7px;border:1px solid #e8e1e9;border-radius:7px;color:#675b6b;background:#fff;font:600 9px 'DM Sans',sans-serif;white-space:nowrap}
+.approval-action:hover:not(:disabled){border-color:#d6bdcd;color:#741745;background:#fff8fb}
+.approval-action.approval-approve{border-color:#e4d7e0;color:#741745}
+.approval-action.approval-reject{color:#9c4552}
+.approval-action:disabled{opacity:.5;cursor:not-allowed}
+.approval-action:focus-visible,.approvals-toolbar input:focus-visible,.approval-table input:focus-visible{outline:2px solid #a8587d;outline-offset:2px}
+.approvals-panel .panel-bottom-note{margin-top:8px}
+.approvals-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:270px;padding:28px 16px;text-align:center}
+.approvals-empty-icon{display:grid;place-items:center;width:58px;height:58px;margin-bottom:14px;border:1px solid #f0e2ea;border-radius:16px;color:#8b315d;background:#fff6fa}
+.approvals-empty h3{margin:0;color:#3b2d3e;font:700 15px 'Plus Jakarta Sans',sans-serif}
+.approvals-empty p{max-width:340px;margin:8px 0 0;color:#827986;font-size:11px;line-height:1.6}
+.approvals-no-results{display:grid;place-items:center;min-height:150px;color:#827986;font-size:11px}
+.approval-loading,.approval-load-error{display:flex;align-items:center;justify-content:center;gap:10px;min-height:230px;color:#7b707e;font-size:11px}
+.approval-loading svg{color:#741745}
+.approval-load-error{flex-direction:column}
+.approval-load-error p{margin:0}
+.approval-load-error .outline-btn{min-height:34px;padding:0 12px}
+@keyframes approval-spin{to{transform:rotate(360deg)}}
+
+.teacher-form-modal{width:min(620px,calc(100vw - 32px));gap:12px;padding:25px;border:1px solid #eee5ec;border-radius:15px;box-shadow:0 18px 50px #2511282b}
+.teacher-form-modal .modal-symbol{width:42px;height:42px;border-radius:11px;color:#741745;background:#f8eaf1}
+.teacher-form-modal h2{padding-right:28px;color:#332337;font:700 19px 'Plus Jakarta Sans',sans-serif}
+.teacher-form-modal>p{margin:0;color:#756b79;font-size:10px;line-height:1.55}
+.teacher-form-required-note{margin-top:-7px;color:#8a808c;font-size:9px}
+.teacher-form-modal .teacher-form{display:grid;gap:14px}
+.teacher-form-modal .teacher-form-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;min-width:0;margin:0;padding:0;border:0}
+.teacher-form-modal .teacher-form-field{display:grid;align-content:start;gap:6px;min-width:0;color:#493c4d;font-size:10px;font-weight:600}
+.teacher-form-modal .teacher-form-field>span:first-child{color:#4d4051}
+.teacher-form-modal .teacher-input-wrap{display:flex;align-items:center;gap:9px;min-width:0;height:41px;padding:0 10px;border:1px solid #e6dfe7;border-radius:8px;color:#918491;background:#fff}
+.teacher-form-modal .teacher-input-wrap:focus-within{border-color:#9c5577;outline:2px solid #a8587d20}
+.teacher-form-modal .teacher-input-wrap>svg{flex:none;color:#907f90}
+.teacher-form-modal .teacher-input-wrap input,.teacher-form-modal .teacher-input-wrap select{width:100%;min-width:0;height:100%;padding:0;border:0;border-radius:0;outline:0;color:#342a37;background:transparent;font:400 11px 'DM Sans',sans-serif}
+.teacher-form-modal .teacher-input-wrap input:focus-visible,.teacher-form-modal .teacher-input-wrap select:focus-visible{outline:0}
+.teacher-form-modal .teacher-input-wrap select{cursor:pointer}
+.teacher-form-modal .teacher-input-wrap input::placeholder{color:#a198a4}
+.teacher-form-modal .teacher-status-field{grid-column:1/-1;padding-top:12px;border-top:1px solid #f0ebf0}
+.teacher-form-modal .teacher-status-field .teacher-input-wrap{max-width:260px}
+.teacher-form-modal .teacher-field-error,.teacher-form-modal .teacher-field-help{font-size:9px;font-weight:400;line-height:1.45}
+.teacher-form-modal .teacher-field-error{color:#b51b43}
+.teacher-form-modal .teacher-field-help{color:#817783}
+.teacher-form-modal .modal-actions{gap:9px;margin-top:1px}
+.teacher-form-modal .modal-actions .outline-btn,.teacher-form-modal .modal-actions .primary{min-height:38px;padding:0 13px;border-radius:8px;font-size:10px;font-weight:600}
+.teacher-form-modal .modal-actions .outline-btn{border-color:#e4dce5;color:#5f5261}
+.teacher-form-modal .modal-actions .primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:118px;background:#741745;box-shadow:none}
+.teacher-form-modal .modal-actions .primary:hover:not(:disabled){background:#842051}
+.teacher-form-modal .modal-actions .primary:disabled{color:#fff;background:#b8aab4;box-shadow:none;cursor:not-allowed}
+.teacher-form-modal .modal-actions svg{flex:none}
+.teacher-form-modal .modal-actions .primary:disabled svg{animation:approval-spin 1.2s linear infinite}
+.teacher-form-modal .teacher-input-wrap input[aria-invalid="true"],.teacher-form-modal .teacher-input-wrap select[aria-invalid="true"]{color:#9d354a}
+.teacher-form-modal .teacher-form-field:has([aria-invalid="true"]) .teacher-input-wrap{border-color:#d997a5}
+.teacher-form-modal .modal-actions button:focus-visible{outline:2px solid #a8587d;outline-offset:2px}
+
+@media(max-width:900px){.approvals-toolbar{grid-template-columns:minmax(180px,1fr) minmax(140px,.7fr)}.approval-selection-count{justify-self:start}.approval-row-actions{flex-wrap:wrap}}
+@media(max-width:650px){.approval-summary{grid-template-columns:1fr;gap:8px}.approval-summary-card{min-height:64px;padding:11px 13px}.approval-summary-icon{width:34px;height:34px}.approvals-panel{padding:15px 12px 9px}.approval-section-heading{align-items:flex-start}.approvals-toolbar{grid-template-columns:1fr}.approvals-toolbar .search-field,.approvals-toolbar>select{width:100%}.approval-selection-count{justify-self:start}.teacher-form-modal{padding:21px}.teacher-form-modal .teacher-form-fields{grid-template-columns:1fr;gap:12px}.teacher-form-modal .teacher-status-field{grid-column:auto;padding-top:10px}.teacher-form-modal .teacher-status-field .teacher-input-wrap{max-width:none}.page-breadcrumb{font-size:9px}}
+@media(max-width:420px){.teacher-form-modal{width:calc(100vw - 24px);padding:18px}.teacher-form-modal .modal-actions{flex-wrap:wrap}.teacher-form-modal .modal-actions>*{flex:1}.approval-load-warning{align-items:flex-start}.page-title.approval-page-title{align-items:flex-start}.page-title.approval-page-title>.primary{min-height:36px;padding:0 10px}}
+@media(prefers-reduced-motion:reduce){.approval-refreshing svg,.approval-loading svg,.teacher-form-modal .modal-actions .primary:disabled svg{animation:none}}
+
