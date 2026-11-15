@@ -871,6 +871,18 @@
         <span class="auth-brand-mark">E</span>
         <span><strong>E-Index</strong><small>ACADEMIC PORTAL</small></span>
       </div>
+      <div class="auth-campus-art" aria-hidden="true">
+        <svg viewBox="0 0 620 450" fill="none">
+          <path d="M28 405H592" stroke="currentColor" stroke-opacity=".34" stroke-width="2"/>
+          <path d="M104 405V169L310 76L516 169V405" fill="currentColor" fill-opacity=".04" stroke="currentColor" stroke-opacity=".28" stroke-width="2"/>
+          <path d="M78 170L310 62L542 170M92 183H528M116 222H504M116 354H504" stroke="currentColor" stroke-opacity=".3" stroke-width="2"/>
+          <path d="M140 230V340M190 230V340M240 230V340M290 230V340M340 230V340M390 230V340M440 230V340M490 230V340" stroke="currentColor" stroke-opacity=".24" stroke-width="2"/>
+          <path d="M130 244H500M130 278H500M130 312H500" stroke="currentColor" stroke-opacity=".2" stroke-width="2"/>
+          <path d="M282 405V354C282 337 294 324 310 324C326 324 338 337 338 354V405" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".3" stroke-width="2"/>
+          <path d="M89 405V372H531V405M60 405V388H89M531 388H560" stroke="currentColor" stroke-opacity=".24" stroke-width="2"/>
+          <path d="M62 388L62 342M62 354C48 349 44 337 49 327C61 331 67 341 62 354ZM62 366C77 361 81 349 76 339C64 343 58 353 62 366Z" stroke="currentColor" stroke-opacity=".24" stroke-width="2"/>
+        </svg>
+      </div>
       <div class="auth-story-content">
         <span class="auth-eyebrow"><span></span> YOUR ACADEMIC WORKSPACE</span>
         <h1><span>Make every</span><br/><span>school day <em>count.</em></span></h1>
@@ -882,23 +894,27 @@
         </div>
       </div>
       <div class="auth-story-footer"><ShieldCheck size={15}/> A secure workspace for educators <span>·</span> AY 2026–2027</div>
-      <div class="auth-orb auth-orb-one"></div>
-      <div class="auth-orb auth-orb-two"></div>
     </section>
 
     <section class="auth-panel">
-      <div class="auth-panel-top"><span>E-INDEX ACCESS</span></div>
       <div class="auth-form-wrap">
         <div class="auth-card">
           <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
+          {#if authMode === 'signup' && !forgotPasswordMode && !resetPasswordMode}
+            <ol class="auth-progress" aria-label="Teacher access request steps">
+              <li aria-current="step"><span class="auth-progress-number">1</span><span>Account Details</span></li>
+              <li><span class="auth-progress-number">2</span><span>Verification</span></li>
+              <li><span class="auth-progress-number">3</span><span>Confirmation</span></li>
+            </ol>
+          {/if}
           <div class="auth-heading">
             <h2>{resetPasswordMode ? 'Choose a new password' : forgotPasswordMode ? 'Reset your password' : authMode === 'login' ? 'Welcome back' : 'Request Teacher Access'}</h2>
-            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? 'Sign in to your E-Index workspace.' : 'An administrator must approve your teacher account before you can sign in.'}</p>
+            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? 'Sign in to your E-Index workspace.' : 'An administrator must approve your request to access the system.'}</p>
           </div>
           {#if !forgotPasswordMode && !resetPasswordMode}
             <div class="auth-tabs" role="tablist" aria-label="Account access">
-              <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
-              <button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>
+              <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}><UserRound size={15}/>Sign In</button>
+              <button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}><Plus size={15}/>Create Account</button>
             </div>
           {/if}
 
@@ -939,11 +955,13 @@
                   <span class="auth-input-wrap"><Building2 size={16}/><select name="collegeId" bind:value={signupCollegeId} required disabled={collegeChoicesLoading || activeCollegeChoices.length === 0}><option value="" disabled>Select your college</option>{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select><ChevronDown size={15}/></span>
                 </label>
                 {#if collegeChoicesLoading}
-                  <p class="auth-helper" role="status">Loading verified college choices…</p>
+                  <div class="auth-college-notice" role="status"><Info size={16}/><p>Loading verified college choices…</p></div>
                 {:else if collegeChoicesError}
                   <p class="auth-error" role="alert">{collegeChoicesError}</p>
                 {:else if activeCollegeChoices.length === 0}
-                  <p class="auth-helper" role="status">Verified college choices are currently unavailable. Registration will open when an administrator confirms and activates a college.</p>
+                  <div class="auth-college-notice" role="status"><Info size={16}/><p>Verified college choices are currently unavailable. Registration will open when an administrator confirms and activates a college.</p></div>
+                {:else}
+                  <div class="auth-college-notice"><Info size={16}/><p>Only colleges confirmed and activated by an administrator appear here.</p></div>
                 {/if}
                 <p class="auth-helper">Teacher access requires administrator approval before you can sign in.</p>
               {/if}
@@ -960,7 +978,7 @@
               {/if}
               {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
               {#if authInitError}<p class="auth-error" role="alert">{authInitError}</p>{/if}
-              <button class="auth-submit" type="submit" disabled={!authReady || (authMode === 'signup' && (collegeChoicesLoading || activeCollegeChoices.length === 0 || !signupCollegeId))}>{authMode === 'login' ? 'Sign in to your account' : 'Request Teacher Access'} <ArrowRight size={17}/></button>
+              <button class="auth-submit" type="submit" disabled={!authReady || (authMode === 'signup' && (collegeChoicesLoading || activeCollegeChoices.length === 0 || !signupCollegeId))}>{authMode === 'login' ? 'Sign in to your account' : 'Submit Request'} <ArrowRight size={17}/></button>
             </form>
           {/if}
         </div>
