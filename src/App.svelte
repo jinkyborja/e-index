@@ -871,18 +871,6 @@
         <span class="auth-brand-mark">E</span>
         <span><strong>E-Index</strong><small>ACADEMIC PORTAL</small></span>
       </div>
-      <div class="auth-campus-art" aria-hidden="true">
-        <svg viewBox="0 0 620 450" fill="none">
-          <path d="M28 405H592" stroke="currentColor" stroke-opacity=".34" stroke-width="2"/>
-          <path d="M104 405V169L310 76L516 169V405" fill="currentColor" fill-opacity=".04" stroke="currentColor" stroke-opacity=".28" stroke-width="2"/>
-          <path d="M78 170L310 62L542 170M92 183H528M116 222H504M116 354H504" stroke="currentColor" stroke-opacity=".3" stroke-width="2"/>
-          <path d="M140 230V340M190 230V340M240 230V340M290 230V340M340 230V340M390 230V340M440 230V340M490 230V340" stroke="currentColor" stroke-opacity=".24" stroke-width="2"/>
-          <path d="M130 244H500M130 278H500M130 312H500" stroke="currentColor" stroke-opacity=".2" stroke-width="2"/>
-          <path d="M282 405V354C282 337 294 324 310 324C326 324 338 337 338 354V405" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".3" stroke-width="2"/>
-          <path d="M89 405V372H531V405M60 405V388H89M531 388H560" stroke="currentColor" stroke-opacity=".24" stroke-width="2"/>
-          <path d="M62 388L62 342M62 354C48 349 44 337 49 327C61 331 67 341 62 354ZM62 366C77 361 81 349 76 339C64 343 58 353 62 366Z" stroke="currentColor" stroke-opacity=".24" stroke-width="2"/>
-        </svg>
-      </div>
       <div class="auth-story-content">
         <span class="auth-eyebrow"><span></span> YOUR ACADEMIC WORKSPACE</span>
         <h1><span>Make every</span><br/><span>school day <em>count.</em></span></h1>
@@ -894,6 +882,8 @@
         </div>
       </div>
       <div class="auth-story-footer"><ShieldCheck size={15}/> A secure workspace for educators <span>·</span> AY 2026–2027</div>
+      <div class="auth-orb auth-orb-one"></div>
+      <div class="auth-orb auth-orb-two"></div>
     </section>
 
     <section class="auth-panel">
