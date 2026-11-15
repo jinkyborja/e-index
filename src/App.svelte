@@ -16,8 +16,9 @@
     CalendarDays, Check, ArrowUpRight, ArrowRight, Plus, Download, MoreHorizontal,
     BookOpen, ScanLine, FileBarChart, UserRound, ShieldCheck,
     RefreshCw, Filter, Calendar, FileText, TrendingUp, Clock, CheckCircle2,
-    XCircle, AlertCircle, Eye, Pencil, Trash2, ChevronLeft, ChevronRight,
-    ClipboardCheck, Building2, Mail, Lock, Palette, SlidersHorizontal
+    XCircle, AlertCircle, Eye, EyeOff, KeyRound, Sparkles, Pencil, Trash2, ChevronLeft, ChevronRight,
+    ClipboardCheck, Building2, Mail, Lock, Palette, SlidersHorizontal, Sun, Moon, Camera,
+    Info, Megaphone, Database
   } from 'lucide-svelte';
 
   const storedAccount = restoreAuth();
@@ -31,9 +32,19 @@
   let loginEmail = '';
   let signupName = '';
   let signupDepartment = '';
+  let authTransitionPhase = 'idle';
+  let authTransitionDirection = 'to-signup';
+  let authTransitioning = false;
+  let authTransitionTimer = null;
   let rememberMe = Boolean(storedAccount?.remember);
   let authError = '';
   let showPassword = false;
+  let showCurrentSettingsPassword = false;
+  let showNewSettingsPassword = false;
+  let showConfirmSettingsPassword = false;
+  let currentPasswordValue = '';
+  let newPasswordValue = '';
+  let confirmPasswordValue = '';
   let loginPassword = '';
   let signupPassword = '';
   let signupPasswordConfirm = '';
@@ -78,6 +89,9 @@
   let auditTo = '';
   let rosterSearch = '';
   let profilePhoto = '';
+  let profilePhotoInput = null;
+  let teacherProfileForm = null;
+  let profileEdited = false;
   let notificationPreferences = { updates: true, attendance: true, announcements: true };
   let teachers = [];
   let students = [];
@@ -150,6 +164,10 @@
   $: reportAttendance = attendance.filter(item => !selectedClass || item.className === selectedClass);
   $: attendanceTrend = groupAttendance(reportAttendance, reportFrequency);
   $: reportGrades = grades.filter(item => (!selectedClass || item.className === selectedClass) && item.period === reportPeriod);
+  $: passwordRequirements = {
+    length: newPasswordValue.length >= 8,
+    match: confirmPasswordValue.length > 0 && newPasswordValue === confirmPasswordValue
+  };
   $: filteredAudit = audit.filter(record => `${record.type} ${record.action} ${record.detail} ${record.target}`.toLowerCase().includes(auditSearch.toLowerCase())
     && (auditTypeFilter === 'All actions' || record.type === auditTypeFilter.toUpperCase())
     && (auditActorFilter === 'All actors' || record.action === auditActorFilter)
@@ -178,6 +196,29 @@
     } else if (label === 'Reports') selectedTab = 'Attendance';
     else if (label === 'Classes & Sections') selectedTab = 'My Classes';
   }
+  function selectSettingsTab(tab) {
+    if (selectedTab === 'Profile' && tab !== 'Profile') {
+      profileEdited = false;
+      profilePhoto = userSettings.photo || '';
+    }
+    selectedTab = tab;
+  }
+  function chooseProfilePhoto() {
+    profilePhotoInput?.click();
+  }
+  function updateProfileEdited(form) {
+    if (!form) return;
+    const values = new FormData(form);
+    profileEdited = String(values.get('firstName') || '').trim() !== userSettings.firstName
+      || String(values.get('lastName') || '').trim() !== userSettings.lastName
+      || String(values.get('email') || '').trim().toLowerCase() !== userSettings.email
+      || String(values.get('department') || '').trim() !== userSettings.department
+      || profilePhoto !== (userSettings.photo || '');
+  }
+  function openTeacherClass(className) {
+    selectedClass = className;
+    go('Classes & Sections');
+  }
   function routeLocationChanged(pathname) {
     if (pathname === lastPath) return;
     lastPath = pathname;
@@ -191,7 +232,7 @@
       }
       portal = 'auth';
       page = 'Dashboard';
-      authMode = 'login';
+      setAuthMode('login', true);
       return;
     }
 
@@ -234,13 +275,13 @@
     authRole = value;
     rememberMe = false;
     authError = '';
-    setAuthMode('login');
+    setAuthMode('login', true);
     page = 'Dashboard';
     searchText = '';
     sidebarOpen = false;
     navigate('/login', { replace: true });
   }
-  function setAuthMode(value) {
+  function applyAuthMode(value) {
     authMode = value;
     if (value === 'signup') authRole = 'teacher';
     showPassword = false;
@@ -249,13 +290,44 @@
     signupPasswordConfirm = '';
     authError = '';
   }
+  function setAuthMode(value, force = false) {
+    if (force) {
+      if (authTransitionTimer !== null) clearTimeout(authTransitionTimer);
+      authTransitionTimer = null;
+      authTransitionPhase = 'idle';
+      authTransitioning = false;
+      applyAuthMode(value);
+      return;
+    }
+    if (authTransitioning) return;
+    if (value === authMode) {
+      applyAuthMode(value);
+      return;
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      applyAuthMode(value);
+      return;
+    }
+    authTransitioning = true;
+    authTransitionDirection = value === 'signup' ? 'to-signup' : 'to-login';
+    authTransitionPhase = 'closing';
+    authTransitionTimer = setTimeout(() => {
+      applyAuthMode(value);
+      authTransitionPhase = 'opening';
+      authTransitionTimer = setTimeout(() => {
+        authTransitionPhase = 'idle';
+        authTransitioning = false;
+        authTransitionTimer = null;
+      }, 600);
+    }, 350);
+  }
   function setAuthRole(value) {
     authRole = value;
     authError = '';
     loginEmail = '';
     loginPassword = '';
     rememberMe = false;
-    setAuthMode('login');
+    setAuthMode('login', true);
   }
   function logOut() {
     const role = isAdmin ? 'admin' : 'teacher';
@@ -265,12 +337,13 @@
     teacherAuthenticated = false;
     authRole = role;
     rememberMe = false;
-    setAuthMode('login');
+    setAuthMode('login', true);
     navigate('/login', { replace: true });
     notify('You have been logged out.');
   }
   function handleTeacherAuth(event) {
     event.preventDefault();
+    if (authTransitioning) return;
     if (authMode === 'signup') {
       if (signupPassword !== signupPasswordConfirm) {
         authError = 'The passwords do not match.';
@@ -629,6 +702,7 @@
   function loadSettingsDraft() {
     const settings = userSettings;
     profilePhoto = settings.photo || '';
+    profileEdited = false;
     notificationPreferences = { ...settings.notifications };
   }
   function saveProfile(event) {
@@ -649,6 +723,7 @@
       data.teachers = data.teachers.map(teacher => teacher.email === userSettings.email ? { ...teacher, email, name, department: String(values.department).trim() } : teacher);
       data.audit.unshift({ type: 'UPDATE', action: currentUser?.name || name, detail: 'Updated account profile', target: email, time: new Date().toLocaleString() });
     });
+    profileEdited = false;
     const updatedUser = { ...currentUser, email, name };
     try {
       updateAuthUser(updatedUser);
@@ -666,7 +741,10 @@
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => profilePhoto = String(reader.result);
+    reader.onload = () => {
+      profilePhoto = String(reader.result);
+      updateProfileEdited(teacherProfileForm);
+    };
     reader.onerror = () => notify('The selected profile image could not be read.');
     reader.readAsDataURL(file);
   }
@@ -689,17 +767,38 @@
     });
     notify('Password updated.');
     event.currentTarget.reset();
+    currentPasswordValue = '';
+    newPasswordValue = '';
+    confirmPasswordValue = '';
+    showCurrentSettingsPassword = false;
+    showNewSettingsPassword = false;
+    showConfirmSettingsPassword = false;
+  }
+  function cancelPasswordChange(event) {
+    event.currentTarget.form?.reset();
+    currentPasswordValue = '';
+    newPasswordValue = '';
+    confirmPasswordValue = '';
+    showCurrentSettingsPassword = false;
+    showNewSettingsPassword = false;
+    showConfirmSettingsPassword = false;
   }
   function saveNotificationPreferences() {
     updateData(data => {
-      data.settings[settingsKey].notifications = { ...notificationPreferences };
+      data.settings[settingsKey] = {
+        ...(data.settings[settingsKey] || userSettings),
+        notifications: { ...notificationPreferences }
+      };
       data.audit.unshift({ type: 'UPDATE', action: currentUser?.name || 'System', detail: 'Updated notification preferences', target: currentUser?.email || '—', time: new Date().toLocaleString() });
     });
     notify('Notification preferences saved.');
   }
   function saveAppearance(value) {
     updateData(data => {
-      data.settings[settingsKey].appearance = value;
+      data.settings[settingsKey] = {
+        ...(data.settings[settingsKey] || userSettings),
+        appearance: value
+      };
     });
     notify(`${value} appearance saved.`);
   }
@@ -722,7 +821,7 @@
 </svelte:head>
 
 {#if !isAdmin && !teacherAuthenticated}
-  <main class="auth-page">
+  <main class:signup-active={authMode === 'signup'} class="auth-page">
     <section class="auth-story">
       <button class="auth-brand" onclick={() => switchPortal('admin')} aria-label="Return to administration dashboard">
         <span class="auth-brand-mark">E</span>
@@ -730,7 +829,7 @@
       </button>
       <div class="auth-story-content">
         <span class="auth-eyebrow"><span></span> YOUR ACADEMIC WORKSPACE</span>
-        <h1>Make every<br/>school day <em>count.</em></h1>
+        <h1><span>Make every</span><br/><span>school day <em>count.</em></span></h1>
         <p>Everything you need to manage classes, record attendance, and keep your students on track — all in one place.</p>
         <div class="auth-feature-card">
           <div class="auth-feature-icon"><CalendarDays size={19}/></div>
@@ -744,66 +843,69 @@
     </section>
 
     <section class="auth-panel">
-      <div class="auth-panel-top"><span>E-INDEX ACCESS</span><button onclick={() => setAuthRole(authRole === 'admin' ? 'teacher' : 'admin')}>{authRole === 'admin' ? 'Teacher sign in' : 'Administration sign in'} <ArrowUpRight size={14}/></button></div>
+      <div class="auth-panel-top"><span>E-INDEX ACCESS</span></div>
       <div class="auth-form-wrap">
-        <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
-        <div class="auth-heading">
-          <span class="auth-heading-icon">{#if authMode === 'login'}<Lock size={19}/>{:else}<UserRound size={20}/>{/if}</span>
-          <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-          <p>{authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
-        </div>
-
-        {#if authMode === 'login'}
-          <div class="auth-role-tabs" role="group" aria-label="Choose a portal">
-            <button class:auth-role-active={authRole === 'teacher'} onclick={() => setAuthRole('teacher')}>Teacher</button>
-            <button class:auth-role-active={authRole === 'admin'} onclick={() => setAuthRole('admin')}>Administration</button>
+        <div class:transition-closing={authTransitionPhase === 'closing'} class:transition-opening={authTransitionPhase === 'opening'} class="auth-card" aria-busy={authTransitioning}>
+          <div class:to-signup={authTransitionDirection === 'to-signup'} class="auth-transition-sweep" aria-hidden="true"></div>
+          <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
+          <div class="auth-heading">
+            <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+            <p>{authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
           </div>
-        {/if}
-        <div class="auth-tabs" role="tablist" aria-label="Teacher account access">
-          <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
-          {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
-        </div>
+          <div class="auth-tabs" role="tablist" aria-label="Teacher account access">
+            <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} disabled={authTransitioning} onclick={() => setAuthMode('login')}>Sign in</button>
+            {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} disabled={authTransitioning} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
+          </div>
 
-        <form class="auth-form" onsubmit={handleTeacherAuth}>
-          {#if authMode === 'signup'}
-            <label>Full name
-              <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" placeholder="e.g. Alex Santos" bind:value={signupName} required/></span>
+          <form class:signup-form={authMode === 'signup'} class="auth-form" onsubmit={handleTeacherAuth}>
+            {#if authMode === 'signup'}
+              <label>Full name
+                <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" placeholder="e.g. Alex Santos" bind:value={signupName} required/></span>
+              </label>
+            {/if}
+            <label>School email
+              <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" name="email" placeholder="you@school.edu.ph" bind:value={loginEmail} required/></span>
             </label>
-          {/if}
-          <label>School email
-            <span class="auth-input-wrap"><Mail size={16}/><input type="email" autocomplete="email" name="email" placeholder="you@school.edu.ph" bind:value={loginEmail} required/></span>
-          </label>
-          {#if authMode === 'signup'}
-            <label>Department
-              <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your department</option><option>Computer Studies</option><option>Education</option><option>Arts and Sciences</option><option>Business</option><option>Other</option></select><ChevronDown size={15}/></span>
+            {#if authMode === 'signup'}
+              <label>Department
+                <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your department</option><option>Computer Studies</option><option>Education</option><option>Arts and Sciences</option><option>Business</option><option>Other</option></select><ChevronDown size={15}/></span>
+              </label>
+            {/if}
+            <label>Password
+              <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
             </label>
-          {/if}
-          <label>Password
-            <span class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}><Eye size={16}/></button></span>
-          </label>
-          {#if authMode === 'signup'}
-            <label>Confirm password
-              <span class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" name="password-confirm" placeholder="Re-enter your password" minlength="8" bind:value={signupPasswordConfirm} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}><Eye size={16}/></button></span>
-            </label>
-          {/if}
+            {#if authMode === 'signup'}
+              <label>Confirm password
+                <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete="new-password" name="password-confirm" placeholder="Re-enter your password" minlength="8" bind:value={signupPasswordConfirm} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
+              </label>
+            {/if}
+            {#if authMode === 'login'}
+              <div class="auth-form-options"><label class="auth-remember"><input type="checkbox" bind:checked={rememberMe}/> Remember me</label><button type="button" class="auth-text-button" onclick={() => notify('Password reset is not available in this frontend demo.')}>Forgot password?</button></div>
+            {/if}
+            {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
+            <button class="auth-submit" type="submit" disabled={authTransitioning}>{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
+          </form>
+
           {#if authMode === 'login'}
-            <div class="auth-form-options"><label class="auth-remember"><input type="checkbox" bind:checked={rememberMe}/> Remember me</label><button type="button" class="auth-text-button" onclick={() => notify('Password reset is not available in this frontend demo.')}>Forgot password?</button></div>
+            <div class="auth-demo-note">
+              <ShieldCheck size={16}/>
+              <span>
+                {#if authRole === 'teacher'}
+                  <strong>Sample Teacher Account</strong><br/>jinkysuson09@gmail.com / Teacher123!<br/><br/>
+                {/if}
+                <strong>Sample Admin Account</strong><br/>admin@gmail.com / Admin123!<br/>Frontend demo only; credentials are not secure.
+              </span>
+            </div>
+          {:else if authMode === 'signup'}
+            <div class="auth-demo-note"><ShieldCheck size={16}/><span><strong>Frontend demo</strong> — registration is saved locally and waits for administrator approval.</span></div>
           {/if}
-          {#if authError}<p class="auth-error" role="alert">{authError}</p>{/if}
-          <button class="auth-submit" type="submit">{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
-        </form>
-
-        {#if authMode === 'login'}
-          <div class="auth-demo-note"><ShieldCheck size={16}/><span><strong>Sample {authRole} account</strong><br/>{authRole === 'admin' ? 'admin@gmail.com / Admin123!' : 'jinkysuson09@gmail.com / Teacher123!'}<br/>Frontend demo only; credentials are not secure.</span></div>
-        {:else}
-          <div class="auth-demo-note"><ShieldCheck size={16}/><span><strong>Frontend demo</strong> — registration is saved locally and waits for administrator approval.</span></div>
-        {/if}
+        </div>
       </div>
       <footer class="auth-panel-footer">© 2026 E-Index <span>·</span> Built for better learning</footer>
     </section>
   </main>
 {:else}
-<div class:teacher-shell={!isAdmin} class="app-shell">
+<div class:teacher-shell={!isAdmin} class:theme-dark={userSettings.appearance === 'Dark'} class="app-shell">
   {#if sidebarOpen}
     <button class="mobile-scrim" aria-label="Close menu" onclick={() => sidebarOpen = false}></button>
   {/if}
@@ -856,9 +958,12 @@
         <TeacherDashboard
           userSettings={userSettings}
           classes={classes}
+          students={students}
+          attendance={attendance}
           studentCount={studentCount}
           attendanceRate={attendanceRate}
           onNavigate={go}
+          onOpenClass={openTeacherClass}
         />
 
       {:else if page === 'Teachers' && isAdmin}
@@ -904,12 +1009,265 @@
         {:else}<section class="panel table-panel"><div class="panel-heading"><h3>{selectedTab === 'Grades' ? 'Academic Records' : 'Student Performance'}</h3></div><div class="table-scroll"><table><thead><tr><th>Student</th><th>Class / Section</th><th>Quizzes</th><th>Examinations</th><th>Activities</th><th>Assessments</th><th>Average</th></tr></thead><tbody>{#each reportGrades as grade}<tr><td>{students.find(student => student.id === grade.studentId)?.name || grade.studentId}</td><td>{grade.className} / {grade.section}</td><td>{grade.quizzes}</td><td>{grade.examinations}</td><td>{grade.activities}</td><td>{grade.assessments}</td><td>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}%</td></tr>{:else}<tr><td colspan="7" class="empty-table">No academic records are available for this class and grading period.</td></tr>{/each}</tbody></table></div></section>{/if}
 
       {:else if page === 'Settings'}
-        <PageTitle icon={Settings} title={isAdmin ? 'Account Settings' : 'Settings'} subtitle="Manage your account profile, security credentials, and preferences."/>
-        <div class="tabs settings-tabs"><button class:chosen={selectedTab === 'Profile'} onclick={() => selectedTab = 'Profile'}>Profile</button><button class:chosen={selectedTab === 'Password'} onclick={() => selectedTab = 'Password'}>Password</button><button class:chosen={selectedTab === 'Appearance'} onclick={() => selectedTab = 'Appearance'}>Appearance</button><button class:chosen={selectedTab === 'Notifications'} onclick={() => selectedTab = 'Notifications'}>Notifications</button></div>
-        {#if selectedTab === 'Profile'}<section class="panel profile-settings"><div class="profile-summary"><div class="profile-avatar">{#if profilePhoto}<img src={profilePhoto} alt={`${userSettings.firstName} ${userSettings.lastName}`}/>{:else}{userSettings.firstName[0]}{userSettings.lastName[0]}{/if}</div><h3>{userSettings.firstName} {userSettings.lastName}</h3><p>{userSettings.email}</p><label class="soft-btn photo-picker">Change Photo<input type="file" accept="image/*" onchange={handlePhotoChange}/></label></div><form class="profile-form" onsubmit={saveProfile}><div class="form-heading"><h3>Profile Information</h3></div><div class="form-grid"><label>First Name<input name="firstName" value={userSettings.firstName} required/></label><label>Last Name<input name="lastName" value={userSettings.lastName} required/></label><label class="full">Email Address<input name="email" type="email" value={userSettings.email} required/></label><label class="full">Department<input name="department" value={userSettings.department} required/></label></div><div class="form-actions"><button class="primary" type="submit">Save Changes</button></div></form></section>
-        {:else if selectedTab === 'Password'}<form class="panel settings-card" onsubmit={changePassword}><h3>Security & Password</h3><label>Current Password<input name="currentPassword" type="password" autocomplete="current-password" required/></label><label>New Password<input name="newPassword" type="password" minlength="8" autocomplete="new-password" required/></label><label>Confirm New Password<input name="confirmPassword" type="password" minlength="8" autocomplete="new-password" required/></label><button class="primary" type="submit">Update Password</button></form>
-        {:else if selectedTab === 'Appearance'}<section class="panel settings-card"><h3>Appearance</h3><p>Choose how E-Index looks on your device.</p><div class="appearance-choice"><span><Palette size={18}/> Light theme</span><span class="status approved">{userSettings.appearance} selected</span></div><button class="primary" onclick={() => saveAppearance(userSettings.appearance === 'Light' ? 'Dark' : 'Light')}>Switch to {userSettings.appearance === 'Light' ? 'Dark' : 'Light'} theme</button></section>
-        {:else}<section class="panel settings-card"><h3>Notification Preferences</h3><label class="toggle-row">Account updates <input type="checkbox" bind:checked={notificationPreferences.updates}/></label><label class="toggle-row">Attendance reminders <input type="checkbox" bind:checked={notificationPreferences.attendance}/></label><label class="toggle-row">System announcements <input type="checkbox" bind:checked={notificationPreferences.announcements}/></label><button class="primary" onclick={saveNotificationPreferences}>Save Preferences</button><hr/><h3>Demo data</h3><p>Restore the original sample records and accounts for testing.</p><button class="outline-btn" onclick={() => askConfirmation('reset-data', null, 'Reset demo data', 'This replaces all locally saved E-Index demo records with the original sample data.')}>Reset demo data</button></section>{/if}
+        <PageTitle icon={selectedTab === 'Notifications' ? Bell : Settings} title={isAdmin ? 'Account Settings' : 'Settings'} subtitle="Manage your account profile, security credentials, and preferences."/>
+        <div class="settings-layout">
+          <div class="tabs settings-tabs">
+            <button class:chosen={selectedTab === 'Profile'} onclick={() => selectSettingsTab('Profile')}>Profile</button>
+            <button class:chosen={selectedTab === 'Password'} onclick={() => selectSettingsTab('Password')}>Password</button>
+            <button class:chosen={selectedTab === 'Appearance'} onclick={() => selectSettingsTab('Appearance')}>Appearance</button>
+            <button class:chosen={selectedTab === 'Notifications'} onclick={() => selectSettingsTab('Notifications')}>Notifications</button>
+          </div>
+          <div class="settings-content">
+            {#if selectedTab === 'Profile'}
+              <section class="panel profile-settings teacher-profile-settings">
+                <aside class="teacher-profile-card">
+                  <span class="teacher-profile-decoration" aria-hidden="true"></span>
+                  <div class="teacher-profile-avatar-wrap">
+                    <div class="profile-avatar">
+                      {#if profilePhoto}
+                        <img src={profilePhoto} alt={`${userSettings.firstName} ${userSettings.lastName}`}/>
+                      {:else}
+                        {userSettings.firstName[0]}{userSettings.lastName[0]}
+                      {/if}
+                    </div>
+                    <button class="teacher-profile-camera" type="button" aria-label="Change profile photo" onclick={chooseProfilePhoto}><Camera size={16}/></button>
+                  </div>
+                  <h3>{userSettings.firstName} {userSettings.lastName}</h3>
+                  <p class="teacher-profile-email">{userSettings.email}</p>
+                  <div class="teacher-profile-divider"></div>
+                  <div class="teacher-profile-details">
+                    <div><span class="teacher-profile-detail-icon"><Mail size={16}/></span><span><small>Email address</small><strong>{userSettings.email}</strong></span></div>
+                    <div><span class="teacher-profile-detail-icon"><Building2 size={16}/></span><span><small>Department</small><strong>{userSettings.department || 'Not set'}</strong></span></div>
+                    <div><span class="teacher-profile-detail-icon"><GraduationCap size={16}/></span><span><small>Role</small><strong>{isAdmin ? 'System Admin' : 'Teacher'}</strong></span></div>
+                  </div>
+                  <button class="soft-btn teacher-change-photo" type="button" onclick={chooseProfilePhoto}><Camera size={15}/>Change Photo</button>
+                  <input bind:this={profilePhotoInput} class="teacher-profile-photo-input" type="file" accept="image/*" aria-label="Choose profile photo" onchange={handlePhotoChange}/>
+                </aside>
+                <form bind:this={teacherProfileForm} class="profile-form teacher-profile-form" onsubmit={saveProfile}>
+                  <div class="teacher-profile-form-heading">
+                    <div class="teacher-profile-form-title">
+                      <span class="teacher-profile-heading-icon"><UserRound size={19}/></span>
+                      <div><h3>Profile Information</h3><p>Update your personal information.</p></div>
+                    </div>
+                    <span class="teacher-profile-status" class:changed={profileEdited} aria-live="polite"><i></i>{profileEdited ? 'Unsaved changes' : 'Profile up to date'}</span>
+                  </div>
+                  <div class="form-grid">
+                    <label>First Name<span class="teacher-profile-field"><UserRound size={16}/><input name="firstName" value={userSettings.firstName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
+                    <label>Last Name<span class="teacher-profile-field"><UserRound size={16}/><input name="lastName" value={userSettings.lastName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
+                    <label class="full">Email Address<span class="teacher-profile-field"><Mail size={16}/><input name="email" type="email" value={userSettings.email} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
+                    <label class="full">Department<span class="teacher-profile-field"><Building2 size={16}/><input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
+                  </div>
+                  <div class="form-actions"><button class="primary" type="submit"><Check size={16}/>Save Changes</button></div>
+                </form>
+              </section>
+              <section class="teacher-security-reminder">
+                <span class="teacher-security-icon"><ShieldCheck size={21}/></span>
+                <div><h3>Keep your account secure.</h3><p>Regularly update your password and review your account settings.</p></div>
+                <button class="outline-btn" type="button" onclick={() => selectSettingsTab('Password')}>Change Password<ArrowRight size={15}/></button>
+              </section>
+            {:else if selectedTab === 'Password'}
+              <section class="panel settings-password-panel">
+                <form class="settings-password-form" onsubmit={changePassword}>
+                  <header class="settings-password-heading">
+                    <span class="settings-password-heading-icon" aria-hidden="true"><Lock size={19}/></span>
+                    <div><h3>Security & Password</h3><p>Update your password to keep your account secure.</p></div>
+                  </header>
+                  <label class="settings-password-label">Current Password
+                    <span class="settings-password-input">
+                      <Lock size={17} aria-hidden="true"/>
+                      <input name="currentPassword" type={showCurrentSettingsPassword ? 'text' : 'password'} autocomplete="current-password" bind:value={currentPasswordValue} placeholder="Enter your current password" required/>
+                      <button class="settings-password-visibility" type="button" aria-label={showCurrentSettingsPassword ? 'Hide current password' : 'Show current password'} aria-pressed={showCurrentSettingsPassword} onclick={() => showCurrentSettingsPassword = !showCurrentSettingsPassword}>
+                        {#if showCurrentSettingsPassword}<EyeOff size={17}/>{:else}<Eye size={17}/>{/if}
+                      </button>
+                    </span>
+                  </label>
+                  <label class="settings-password-label">New Password
+                    <span class="settings-password-input">
+                      <KeyRound size={17} aria-hidden="true"/>
+                      <input name="newPassword" type={showNewSettingsPassword ? 'text' : 'password'} minlength="8" autocomplete="new-password" bind:value={newPasswordValue} placeholder="Create a strong password" required/>
+                      <button class="settings-password-visibility" type="button" aria-label={showNewSettingsPassword ? 'Hide new password' : 'Show new password'} aria-pressed={showNewSettingsPassword} onclick={() => showNewSettingsPassword = !showNewSettingsPassword}>
+                        {#if showNewSettingsPassword}<EyeOff size={17}/>{:else}<Eye size={17}/>{/if}
+                      </button>
+                    </span>
+                  </label>
+                  <label class="settings-password-label">Confirm New Password
+                    <span class="settings-password-input">
+                      <KeyRound size={17} aria-hidden="true"/>
+                      <input name="confirmPassword" type={showConfirmSettingsPassword ? 'text' : 'password'} minlength="8" autocomplete="new-password" bind:value={confirmPasswordValue} placeholder="Re-enter your new password" required/>
+                      <button class="settings-password-visibility" type="button" aria-label={showConfirmSettingsPassword ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={showConfirmSettingsPassword} onclick={() => showConfirmSettingsPassword = !showConfirmSettingsPassword}>
+                        {#if showConfirmSettingsPassword}<EyeOff size={17}/>{:else}<Eye size={17}/>{/if}
+                      </button>
+                    </span>
+                  </label>
+                  <div class="settings-password-requirements" aria-live="polite">
+                    <span class="settings-password-requirements-icon" aria-hidden="true"><ShieldCheck size={19}/></span>
+                    <div>
+                      <strong>Password requirements</strong>
+                      <p>Use at least 8 characters and repeat your new password exactly.</p>
+                      <ul>
+                        <li class:met={passwordRequirements.length}><span>{#if passwordRequirements.length}<Check size={12}/>{/if}</span>At least 8 characters</li>
+                        <li class:met={passwordRequirements.match}><span>{#if passwordRequirements.match}<Check size={12}/>{/if}</span>New passwords match</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="settings-password-actions">
+                    <button class="primary" type="submit"><Lock size={16}/>Update Password</button>
+                    <button class="outline-btn" type="button" onclick={cancelPasswordChange}>Cancel</button>
+                  </div>
+                </form>
+                <aside class="settings-password-illustration">
+                  <div class="settings-security-art" aria-hidden="true">
+                    <span class="settings-security-orbit"></span>
+                    <span class="settings-security-sparkle sparkle-one"><Sparkles size={20}/></span>
+                    <span class="settings-security-sparkle sparkle-two"><Sparkles size={15}/></span>
+                    <div class="settings-security-shield"><ShieldCheck size={88}/></div>
+                    <span class="settings-security-lock"><Lock size={28}/></span>
+                  </div>
+                  <h3>Your Security Matters</h3>
+                  <p>Keep your account safe and secure with a strong password.</p>
+                  <span class="settings-security-note"><ShieldCheck size={14}/>Private to your account</span>
+                </aside>
+              </section>
+            {:else if selectedTab === 'Appearance'}
+              <section class="panel settings-card settings-appearance">
+                <div class="appearance-heading">
+                  <span class="appearance-icon" aria-hidden="true"><Palette size={20}/></span>
+                  <div class="appearance-heading-copy">
+                    <h3>Appearance</h3>
+                    <p>Choose how E-Index looks on your device.</p>
+                  </div>
+                  <span class="appearance-status status approved"><CheckCircle2 size={15}/>{userSettings.appearance} selected</span>
+                </div>
+                <div class="theme-options" role="radiogroup" aria-label="Choose a theme">
+                  <button
+                    class="theme-option"
+                    class:selected={userSettings.appearance === 'Light'}
+                    type="button"
+                    role="radio"
+                    aria-checked={userSettings.appearance === 'Light'}
+                    onclick={() => saveAppearance('Light')}
+                  >
+                    <span class="theme-radio" aria-hidden="true">{#if userSettings.appearance === 'Light'}<Check size={13}/>{/if}</span>
+                    <span class="theme-option-copy">
+                      <span class="theme-option-title"><Sun size={18}/><strong>Light Theme</strong></span>
+                      <small>A clean and bright interface for everyday use.</small>
+                    </span>
+                    <span class="theme-preview theme-preview-light" aria-hidden="true">
+                      <span class="preview-sidebar"><i></i><i></i><i></i><i></i></span>
+                      <span class="preview-content">
+                        <span class="preview-toolbar"><i></i><i></i><i></i></span>
+                        <span class="preview-feature"></span>
+                        <span class="preview-cards"><i></i><i></i></span>
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    class="theme-option"
+                    class:selected={userSettings.appearance === 'Dark'}
+                    type="button"
+                    role="radio"
+                    aria-checked={userSettings.appearance === 'Dark'}
+                    onclick={() => saveAppearance('Dark')}
+                  >
+                    <span class="theme-radio" aria-hidden="true">{#if userSettings.appearance === 'Dark'}<Check size={13}/>{/if}</span>
+                    <span class="theme-option-copy">
+                      <span class="theme-option-title"><Moon size={18}/><strong>Dark Theme</strong></span>
+                      <small>A sleek and easy-on-the-eyes interface.</small>
+                    </span>
+                    <span class="theme-preview theme-preview-dark" aria-hidden="true">
+                      <span class="preview-sidebar"><i></i><i></i><i></i><i></i></span>
+                      <span class="preview-content">
+                        <span class="preview-toolbar"><i></i><i></i><i></i></span>
+                        <span class="preview-feature"></span>
+                        <span class="preview-cards"><i></i><i></i></span>
+                      </span>
+                    </span>
+                  </button>
+                </div>
+                <button class="primary appearance-switch" type="button" onclick={() => saveAppearance(userSettings.appearance === 'Light' ? 'Dark' : 'Light')}>
+                  <RefreshCw size={16}/>
+                  Switch to {userSettings.appearance === 'Light' ? 'Dark' : 'Light'} Theme
+                </button>
+              </section>
+            {:else}
+              <section class="panel settings-card settings-notifications">
+                <div class="notifications-intro">
+                  <div class="notifications-illustration" aria-hidden="true">
+                    <Bell size={30}/>
+                    <span><i></i></span>
+                  </div>
+                  <div class="notifications-intro-copy">
+                    <span class="notification-eyebrow">Notification Preferences</span>
+                    <h3>Stay informed and never miss important updates.</h3>
+                    <p>Choose what kind of updates you want to receive.</p>
+                  </div>
+                </div>
+                <div class="notification-options">
+                  <article class="notification-card">
+                    <div class="notification-card-heading">
+                      <div class="notification-card-copy">
+                        <span class="notification-type-icon"><RefreshCw size={18}/></span>
+                        <div>
+                          <h4>Account Updates</h4>
+                          <p>System maintenance and account changes.</p>
+                        </div>
+                      </div>
+                      <label class="notification-toggle">
+                        <input type="checkbox" aria-label="Account Updates" bind:checked={notificationPreferences.updates}/>
+                        <span class="notification-toggle-track" aria-hidden="true"><span></span></span>
+                      </label>
+                    </div>
+                    <div class="notification-card-info"><Info size={15}/><span>You'll be notified about important account updates.</span></div>
+                  </article>
+                  <article class="notification-card">
+                    <div class="notification-card-heading">
+                      <div class="notification-card-copy">
+                        <span class="notification-type-icon"><CalendarDays size={18}/></span>
+                        <div>
+                          <h4>Attendance Reminders</h4>
+                          <p>Daily attendance reminders.</p>
+                        </div>
+                      </div>
+                      <label class="notification-toggle">
+                        <input type="checkbox" aria-label="Attendance Reminders" bind:checked={notificationPreferences.attendance}/>
+                        <span class="notification-toggle-track" aria-hidden="true"><span></span></span>
+                      </label>
+                    </div>
+                    <div class="notification-card-info"><Info size={15}/><span>Get reminded about attendance deadlines.</span></div>
+                  </article>
+                  <article class="notification-card">
+                    <div class="notification-card-heading">
+                      <div class="notification-card-copy">
+                        <span class="notification-type-icon"><Megaphone size={18}/></span>
+                        <div>
+                          <h4>System Announcements</h4>
+                          <p>Important news and updates.</p>
+                        </div>
+                      </div>
+                      <label class="notification-toggle">
+                        <input type="checkbox" aria-label="System Announcements" bind:checked={notificationPreferences.announcements}/>
+                        <span class="notification-toggle-track" aria-hidden="true"><span></span></span>
+                      </label>
+                    </div>
+                    <div class="notification-card-info"><Info size={15}/><span>Receive announcements from the administration.</span></div>
+                  </article>
+                </div>
+                <div class="notification-actions">
+                  <div class="notification-footer-note"><Info size={16}/><span>You can change these preferences anytime.</span></div>
+                  <button class="primary" onclick={saveNotificationPreferences}><Check size={16}/> Save Preferences</button>
+                </div>
+              </section>
+              <section class="panel settings-card settings-demo-data">
+                <span class="demo-data-icon" aria-hidden="true"><Database size={22}/></span>
+                <div class="demo-data-copy">
+                  <h3>Demo Data</h3>
+                  <p>Restore the original sample records and accounts for testing.</p>
+                </div>
+                <button class="outline-btn" onclick={() => askConfirmation('reset-data', null, 'Reset demo data', 'This replaces all locally saved E-Index demo records and accounts with the original sample data.')}><RefreshCw size={15}/> Reset Demo Data</button>
+              </section>
+            {/if}
+          </div>
+        </div>
 
       {:else}
         <PageTitle icon={CircleHelp} title={page} subtitle="This workspace section is ready for your connected data."/>
@@ -921,7 +1279,7 @@
 {/if}
 
 {#if notice}<div class="toast"><CheckCircle2 size={17}/>{notice}</div>{/if}
-{#if showModal}<div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeModal()}><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" onclick={closeModal}><X size={18}/></button><div class="modal-symbol"><Users size={22}/></div><h2 id="modal-heading">{modalTitle}</h2>
+{#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeModal()}><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" onclick={closeModal}><X size={18}/></button><div class="modal-symbol"><Users size={22}/></div><h2 id="modal-heading">{modalTitle}</h2>
   {#if modalMode === 'teacher-form'}<p>Teacher access is simulated locally. New accounts use the sample password Teacher123!.</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>Department<input name="department" value={formValues.department} required/></label><label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
   {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Cancel</button><button class="primary danger-action" onclick={runConfirmation}>Confirm</button></div>
   {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.active === false ? 'Inactive' : modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>

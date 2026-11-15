@@ -1,0 +1,182 @@
+.app-shell:not(.teacher-shell) {
+  --admin-space-2: var(--eindex-space-2);
+  --admin-space-3: var(--eindex-space-3);
+  --admin-space-4: var(--eindex-space-4);
+  --admin-space-5: var(--eindex-space-5);
+}
+
+.app-shell:not(.teacher-shell) .admin-hero {
+  min-height: 108px;
+  padding: 20px 24px;
+}
+
+.app-shell:not(.teacher-shell) .admin-hero p {
+  max-width: 620px;
+  line-height: 1.5;
+}
+
+.app-shell:not(.teacher-shell) .hero-date {
+  gap: 10px;
+  font-size: 13px;
+}
+
+.app-shell:not(.teacher-shell) .hero-date small {
+  font-size: 12px;
+}
+
+.app-shell:not(.teacher-shell) .dashboard-lower {
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
+  align-items: start;
+  gap: var(--admin-space-4);
+  margin-top: var(--admin-space-4);
+}
+
+.app-shell:not(.teacher-shell) .completion-panel,
+.app-shell:not(.teacher-shell) .notice-card {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .panel-heading {
+  gap: var(--admin-space-3);
+  margin-bottom: var(--admin-space-4);
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .panel-heading h3 {
+  gap: 8px;
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .donut-wrap {
+  justify-content: center;
+  gap: 24px;
+  padding: 8px 0;
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .donut {
+  width: 136px;
+  height: 136px;
+  flex: none;
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .donut strong {
+  font-size: 22px;
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .legend {
+  min-width: min(150px, 100%);
+  gap: 12px;
+}
+
+.app-shell:not(.teacher-shell) .completion-panel .legend p,
+.app-shell:not(.teacher-shell) .completion-panel .legend b {
+  font-size: 13px;
+}
+
+.app-shell:not(.teacher-shell) .notice-card p {
+  max-width: 360px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell:not(.teacher-shell) .table-panel th:last-child,
+.app-shell:not(.teacher-shell) .table-panel td:last-child {
+  text-align: right;
+}
+
+.app-shell:not(.teacher-shell) .approvals-panel th:last-child,
+.app-shell:not(.teacher-shell) .approvals-panel td:last-child {
+  text-align: right;
+}
+
+.app-shell:not(.teacher-shell) .approval-heading {
+  align-items: center;
+  gap: var(--admin-space-4);
+  margin-bottom: var(--admin-space-4);
+}
+
+.app-shell:not(.teacher-shell) .approval-heading p,
+.app-shell:not(.teacher-shell) .panel-bottom-note {
+  font-size: 13px;
+}
+
+.app-shell:not(.teacher-shell) .approval-illustration {
+  flex: none;
+}
+
+.admin-modal .modal {
+  width: min(100%, var(--eindex-modal-admin-max));
+}
+
+.admin-modal .modal form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-modal .modal-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1050px) {
+  .app-shell:not(.teacher-shell) .dashboard-lower {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 850px) {
+  .app-shell:not(.teacher-shell) .semester-select {
+    display: none;
+  }
+
+  .app-shell:not(.teacher-shell) .topbar {
+    gap: 10px;
+  }
+
+  .app-shell:not(.teacher-shell) .dashboard-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+}
+
+@media (max-width: 760px) {
+  .app-shell:not(.teacher-shell) .approval-illustration {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell:not(.teacher-shell) .admin-hero {
+    min-height: 100px;
+    padding: 16px;
+  }
+
+  .app-shell:not(.teacher-shell) .admin-hero p {
+    max-width: 100%;
+  }
+
+  .app-shell:not(.teacher-shell) .completion-panel,
+  .app-shell:not(.teacher-shell) .notice-card {
+    padding: 16px;
+  }
+
+  .app-shell:not(.teacher-shell) .completion-panel .donut-wrap {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .app-shell:not(.teacher-shell) .completion-panel .donut {
+    width: 126px;
+    height: 126px;
+  }
+
+  .admin-modal .modal {
+    width: calc(100% - 24px);
+  }
+
+  .admin-modal .modal form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-modal .modal-actions {
+    grid-column: auto;
+  }
+}
