@@ -67,9 +67,11 @@
 .auth-remember input{width:14px;height:14px;margin:0;accent-color:#691440}
 .auth-text-button{padding:4px 0;color:#7c1749;background:none;border:0;font:600 11px 'DM Sans',sans-serif;cursor:pointer}
 .auth-text-button:hover{color:#a32b5e}
-.auth-helper,.auth-college-notice p{margin:0;color:#6f6876;font-size:12px;font-weight:400;line-height:1.6;text-align:left}
-.auth-college-notice{display:flex;align-items:flex-start;gap:9px;padding:10px 11px;border:1px solid #f0dce6;border-radius:9px;color:#781847;background:#fff7fa}
-.auth-college-notice svg{flex:none;margin-top:1px}
+.auth-approval-notice,.auth-college-notice{display:flex;align-items:flex-start;gap:9px;padding:10px 11px;border:1px solid;border-radius:9px}
+.auth-approval-notice{margin:0 0 14px;border-color:#f0dce6;color:#781847;background:#fff7fa}
+.auth-college-notice{border-color:#ece8ee;color:#766b78;background:#f8f7f8}
+.auth-approval-notice p,.auth-college-notice p{margin:0;color:#6f6876;font-size:12px;font-weight:400;line-height:1.6;text-align:left}
+.auth-approval-notice svg,.auth-college-notice svg{flex:none;margin-top:1px}
 .auth-submit{display:flex;align-items:center;justify-content:center;gap:8px;min-height:47px;margin-top:1px;border:0;border-radius:9px;color:#fff;background:#691440;font:600 12px 'DM Sans',sans-serif;cursor:pointer}
 .auth-submit:hover:not(:disabled){background:#7a1b4e}
 .auth-submit:disabled{opacity:.52;cursor:not-allowed}

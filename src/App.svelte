@@ -1131,6 +1131,9 @@
             <h2>{resetPasswordMode ? 'Choose a new password' : forgotPasswordMode ? 'Reset your password' : authMode === 'login' ? 'Welcome back' : 'Request Teacher Access'}</h2>
             <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? 'Sign in to your E-Index workspace.' : 'An administrator must approve your request to access the system.'}</p>
           </div>
+          {#if authMode === 'signup' && !forgotPasswordMode && !resetPasswordMode}
+            <div class="auth-approval-notice"><Info size={16}/><p>Teacher access requires administrator approval before you can sign in.</p></div>
+          {/if}
           {#if !forgotPasswordMode && !resetPasswordMode}
             <div class="auth-tabs" role="tablist" aria-label="Account access">
               <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}><UserRound size={15}/>Sign In</button>
@@ -1181,9 +1184,8 @@
                 {:else if activeCollegeChoices.length === 0}
                   <div class="auth-college-notice" role="status"><Info size={16}/><p>Verified college choices are currently unavailable. Registration will open when an administrator confirms and activates a college.</p></div>
                 {:else}
-                  <div class="auth-college-notice"><Info size={16}/><p>Only colleges confirmed and activated by an administrator appear here.</p></div>
+                  <div class="auth-college-notice"><Info size={16}/><p>Only colleges confirmed and enabled by an administrator appear here.</p></div>
                 {/if}
-                <p class="auth-helper">Teacher access requires administrator approval before you can sign in.</p>
               {/if}
               <label>Password
                 <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" maxlength="128" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>

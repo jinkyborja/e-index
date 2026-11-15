@@ -6,7 +6,9 @@
 -- teacher can see the demo roster, attendance, and grades after signing in.
 -- It cannot create teacher/student accounts, college links for students/classes,
 -- pending approval accounts, exam entities, or grading tasks with this schema.
--- Run in one MySQL session. Stop if the preflight result is not READY.
+-- Run the entire script in one HeidiSQL query tab/session. Do not execute only
+-- the current statement: the temporary tables and @variables are session-local.
+-- Stop if the preflight result is not READY.
 -- If a statement fails before COMMIT, run ROLLBACK and do not continue.
 
 -- Preflight: this reviewed database currently has exactly one approved admin
@@ -46,7 +48,7 @@ CREATE TEMPORARY TABLE _eindex_demo_classes (
   yearLevel VARCHAR(191) NOT NULL,
   sectionName VARCHAR(191) NOT NULL,
   schedule VARCHAR(191) NOT NULL
-) ENGINE=MEMORY;
+) ENGINE=InnoDB;
 
 INSERT INTO _eindex_demo_classes
   (classNo, id, name, course, program, yearLevel, sectionName, schedule)
@@ -84,26 +86,20 @@ VALUES
   (31, 'DEMO-AY26-27-CLS-31', '[DEMO AY 2026-2027] BSITech T201 Section A', 'Electronics Technology', 'BS Industrial Technology', '2nd Year', 'Section A', 'M 11:00 AM'),
   (32, 'DEMO-AY26-27-CLS-32', '[DEMO AY 2026-2027] BSITech T301 Section B', 'Quality Control', 'BS Industrial Technology', '3rd Year', 'Section B', 'T 11:00 AM');
 
-CREATE TEMPORARY TABLE _eindex_demo_digits (
-  digit TINYINT UNSIGNED NOT NULL PRIMARY KEY
-) ENGINE=MEMORY;
-
-INSERT INTO _eindex_demo_digits (digit)
-VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9);
-
 CREATE TEMPORARY TABLE _eindex_demo_numbers (
   n SMALLINT UNSIGNED NOT NULL PRIMARY KEY
-) ENGINE=MEMORY;
+) ENGINE=InnoDB;
 
 INSERT INTO _eindex_demo_numbers (n)
-SELECT generated.n
-FROM (
-  SELECT hundreds.digit * 100 + tens.digit * 10 + ones.digit + 1 AS n
-  FROM _eindex_demo_digits AS hundreds
-  CROSS JOIN _eindex_demo_digits AS tens
-  CROSS JOIN _eindex_demo_digits AS ones
-) AS generated
-WHERE generated.n BETWEEN 1 AND 480;
+WITH RECURSIVE demo_sequence (n) AS (
+  SELECT 1
+  UNION ALL
+  SELECT n + 1
+  FROM demo_sequence
+  WHERE n < 480
+)
+SELECT n
+FROM demo_sequence;
 
 START TRANSACTION;
 
