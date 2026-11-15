@@ -11,6 +11,7 @@
   import { get } from 'svelte/store';
   import { appData, setAppData, clearAppData } from './stores/appData.js';
   import { apiRequest } from './utils/api.js';
+  import { activateDemoMode, deactivateDemoMode, isDemoModeActive } from './stores/demoData.js';
   import { navigate, routeLocation, watchHistory } from './utils/router.js';
   import { dashboardPath, pathForPage, resolvePortalRoute } from './utils/routes.js';
   import { exportCsv } from './utils/export.js';
@@ -99,6 +100,7 @@
   let teacherFormValid = false;
   let portalDataLoading = false;
   let portalDataLoaded = false;
+  let isDemoMode = false;
   let portalDataError = '';
   let portalDataLoadCount = 0;
   let formValues = {};
@@ -133,7 +135,6 @@
     let unsubscribe = () => {};
     let cancelled = false;
     const initialize = async () => {
-      void loadCollegeChoices();
       let user = null;
       try {
         user = await restoreAuth();
@@ -141,6 +142,14 @@
         authInitError = 'Unable to connect to the portal. Check your connection and try again.';
       }
       if (cancelled) return;
+      if (!user) {
+        try {
+          if (isDemoModeActive()) deactivateDemoMode();
+        } catch (error) {
+          notify(error.message);
+        }
+      }
+      void loadCollegeChoices();
       if (user) {
         portal = user.role;
         teacherAuthenticated = user.role === 'teacher';
@@ -148,6 +157,37 @@
           await refreshPortalData();
         } catch (error) {
           notify(error.message);
+        }
+      }
+      async function startDemoMode(reset = false) {
+        if (!currentUser || !['admin', 'teacher'].includes(currentUser.role)) {
+          notify('Sign in to an administrator or teacher account before loading demo data.');
+          return;
+        }
+        try {
+          activateDemoMode(currentUser.role, reset);
+          await refreshPortalData();
+          await loadCollegeChoices();
+          go('Dashboard');
+          notify(reset ? 'The local demo data was reset.' : 'Local demo data is active. No database records were changed.');
+        } catch (error) {
+          notify(error.message || 'The local demo data could not be loaded.');
+        }
+      }
+      async function exitDemoMode() {
+        try {
+          deactivateDemoMode();
+          clearAppData();
+          selectedRegistrationIds = [];
+          selectedDate = new Date().toISOString().slice(0, 10);
+          await refreshPortalData();
+          await loadCollegeChoices();
+          go('Dashboard');
+          notify('Demo data was removed from this browser. Real portal data has been reloaded.');
+        } catch (error) {
+          clearAppData();
+          portalDataLoaded = false;
+          notify(`Demo data was removed, but real portal data could not be loaded: ${error.message}`);
         }
       }
       if (!cancelled) {
@@ -192,6 +232,7 @@
   $: registrations = $appData.registrations;
   $: colleges = $appData.colleges;
   $: grades = $appData.grades;
+  $: isDemoMode = Boolean($appData.isDemoData);
   $: registrationCollegeOptions = [...new Map(registrations.map(item => {
     const label = item.collegeName || item.department || '';
     return [item.collegeId || `legacy:${label}`, { value: item.collegeId || `legacy:${label}`, label }];
@@ -222,11 +263,17 @@
   $: teacherFormValid = isTeacherFormValid(formValues);
   $: inactiveCount = teachers.filter(t => t.status === 'Inactive').length;
   $: rejectedCount = teachers.filter(t => t.status === 'Rejected').length;
+  $: totalTeacherCount = teachers.filter(t => t.role === 'Teacher').length;
+  $: activeCollegeCount = colleges.filter(college => college.isActive).length;
+  $: activeClassCount = classes.filter(classItem => classItem.active !== false).length;
+  $: systemUserCount = totalTeacherCount + studentCount + (isDemoMode ? 1 : 0);
   $: reportPeriods = [...new Set(grades.map(item => item.period).filter(Boolean))];
   $: if (reportPeriods.length && !reportPeriods.includes(reportPeriod)) reportPeriod = reportPeriods[0];
-  $: currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+  $: currentAcademicYear = isDemoMode ? '2026-2027' : `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
   $: approvalRate = calculateApprovalRate(teachers, registrations);
-  $: settingsKey = isAdmin ? 'admin' : `teacher:${currentUser?.email || 'default'}`;
+  $: settingsKey = isDemoMode
+    ? (currentUser?.role === 'admin' ? 'admin' : 'teacher:demo')
+    : isAdmin ? 'admin' : `teacher:${currentUser?.email || 'default'}`;
   $: userSettings = $appData.settings[settingsKey] || {
     firstName: nameParts[0] || '',
     lastName: nameParts.slice(1).join(' '),
@@ -255,9 +302,9 @@
     length: newPasswordValue.length >= 8,
     match: confirmPasswordValue.length > 0 && newPasswordValue === confirmPasswordValue
   };
-  $: filteredAudit = audit.filter(record => `${record.type} ${record.action} ${record.detail} ${record.target}`.toLowerCase().includes(auditSearch.toLowerCase())
+  $: filteredAudit = audit.filter(record => `${record.type} ${record.action} ${record.detail} ${record.target} ${record.actor}`.toLowerCase().includes(auditSearch.toLowerCase())
     && (auditTypeFilter === 'All actions' || record.type === auditTypeFilter.toUpperCase())
-    && (auditActorFilter === 'All actors' || record.action === auditActorFilter)
+    && (auditActorFilter === 'All actors' || record.actor === auditActorFilter)
     && (!auditFrom || new Date(record.time) >= new Date(`${auditFrom}T00:00:00`))
     && (!auditTo || new Date(record.time) <= new Date(`${auditTo}T23:59:59`)));
 
@@ -417,13 +464,20 @@
       notify(error.message);
       return;
     }
+    let cleanupError = '';
+    try {
+      if (isDemoModeActive()) deactivateDemoMode();
+    } catch (error) {
+      cleanupError = ` Signed out, but local demo data could not be removed: ${error.message}`;
+    }
+    await loadCollegeChoices();
     clearAppData();
     portal = 'auth';
     teacherAuthenticated = false;
     rememberMe = false;
     setAuthMode('login');
     navigate('/login', { replace: true });
-    notify('You have been logged out.');
+    notify(cleanupError || 'You have been logged out.');
   }
   async function handleTeacherAuth(event) {
     event.preventDefault();
@@ -496,9 +550,13 @@
     portalDataError = '';
     try {
       const data = await apiRequest('/api/data');
+      const previousDataWasDemo = get(appData).isDemoData;
       setAppData(data);
+      if (data.isDemoData && !previousDataWasDemo && data.attendance?.[0]?.date) selectedDate = data.attendance[0].date;
       selectedRegistrationIds = selectedRegistrationIds.filter(id => data.registrations?.some(registration => registration.id === id && registration.status === 'Pending'));
-      const key = currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
+      const key = data.isDemoData
+        ? (currentUser?.role === 'admin' ? 'admin' : 'teacher:demo')
+        : currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
       const settings = data.settings?.[key];
       if (settings?.notifications) notificationPreferences = { ...settings.notifications };
       portalDataLoaded = true;
@@ -688,7 +746,11 @@
         const saved = await mutatePortalData(
           modalRecord ? `/api/data/teachers/${encodeURIComponent(identifier)}` : '/api/data/teachers',
           { method: modalRecord ? 'PATCH' : 'POST', body },
-          modalRecord ? 'Teacher account updated.' : 'Teacher account added. A password reset email was sent.'
+          modalRecord
+            ? 'Teacher account updated.'
+            : isDemoMode
+              ? 'Demo teacher account added locally. No email was sent.'
+              : 'Teacher account added. A password reset email was sent.'
         );
         if (saved) {
           teacherFormSubmitting = false;
@@ -766,7 +828,8 @@
           refreshMessage = ` Portal data could not refresh: ${error.message}`;
         }
         const messages = [`${approvedIds.length} of ${record.length} registration(s) approved.`];
-        if (failedEmailNotifications) messages.push(`Email notification could not be submitted for ${failedEmailNotifications} applicant(s).`);
+        if (isDemoMode) messages.push('Demo records were updated locally; no emails were sent.');
+        else if (failedEmailNotifications) messages.push(`Email notification could not be submitted for ${failedEmailNotifications} applicant(s).`);
         if (failedRequests.length) messages.push(`${failedRequests.length} registration(s) could not be updated: ${failedRequests[0]}`);
         if (refreshMessage) messages.push(refreshMessage.trim());
         notify(messages.join(' '));
@@ -827,9 +890,11 @@
         } catch (error) {
           refreshMessage = ` Portal data could not refresh: ${error.message}`;
         }
-        const emailMessage = result?.emailNotification === 'submitted'
-          ? 'An email notification was submitted to the applicant.'
-          : 'The decision was saved, but the applicant email could not be submitted. Please follow up with the applicant.';
+        const emailMessage = result?.emailNotification === 'not-sent-demo'
+          ? 'The demo decision was saved locally; no email was sent.'
+          : result?.emailNotification === 'submitted'
+            ? 'An email notification was submitted to the applicant.'
+            : 'The decision was saved, but the applicant email could not be submitted. Please follow up with the applicant.';
         notify(`Registration ${status.toLowerCase()}. ${emailMessage}${refreshMessage}`);
       } catch (error) {
         notify(error.message);
@@ -946,10 +1011,10 @@
           photo: profilePhoto || ''
         }
       });
-      authUser.set({ ...currentUser, ...result.user });
+      if (!isDemoMode) authUser.set({ ...currentUser, ...result.user });
       profileEdited = false;
       await refreshPortalData();
-      notify('Profile changes saved.');
+      notify(isDemoMode ? 'Demo profile changes saved locally.' : 'Profile changes saved.');
     } catch (error) {
       notify(error.message);
     }
@@ -1192,15 +1257,29 @@
     </header>
 
     <div class="page-content">
+      {#if isDemoMode}
+        <aside class="demo-mode-banner" role="status">
+          <span><Info size={16}/><strong>Local demo data</strong><span>Fictional records and edits stay in this browser. No database changes or emails.</span></span>
+          <button type="button" class="demo-banner-action" onclick={() => go('Settings')}>Manage demo data</button>
+        </aside>
+      {/if}
       {#if page === 'Dashboard' && isAdmin}
         <AdminDashboard
           userSettings={userSettings}
           teacherCount={teacherCount}
+          totalTeacherCount={totalTeacherCount}
           studentCount={studentCount}
           pendingCount={pendingCount}
           approvalRate={approvalRate}
           inactiveCount={inactiveCount}
           rejectedCount={rejectedCount}
+          activeCollegeCount={activeCollegeCount}
+          activeClassCount={activeClassCount}
+          systemUserCount={systemUserCount}
+          academicYear={currentAcademicYear}
+          demoMode={isDemoMode}
+          attendance={attendance}
+          audit={audit}
           onNavigate={go}
         />
       {:else if page === 'Dashboard' && !isAdmin}
@@ -1211,6 +1290,10 @@
           attendance={attendance}
           studentCount={studentCount}
           attendanceRate={attendanceRate}
+          demoMode={isDemoMode}
+          gradingTasks={$appData.gradingTasks}
+          upcomingExams={$appData.upcomingExams}
+          announcements={$appData.announcements}
           onNavigate={go}
           onOpenClass={openTeacherClass}
         />
@@ -1357,7 +1440,7 @@
 
       {:else if page === 'Audit Log' && isAdmin}
         <PageTitle icon={FileText} title="Audit Log" subtitle="Administrative actions recorded by the system."/>
-        <section class="panel table-panel"><div class="toolbar"><div class="search-field"><Search size={16}/><input id="page-search" bind:value={auditSearch} placeholder="Search action, target, or actor..."/></div><select bind:value={auditTypeFilter}><option>All actions</option>{#each [...new Set(audit.map(item => item.type))] as type}<option>{type.charAt(0) + type.slice(1).toLowerCase()}</option>{/each}</select><select bind:value={auditActorFilter}><option>All actors</option>{#each [...new Set(audit.map(item => item.action))] as actor}<option>{actor}</option>{/each}</select><input class="date-input" type="date" bind:value={auditFrom} aria-label="Filter from date"/><input class="date-input" type="date" bind:value={auditTo} aria-label="Filter to date"/><button class="outline-btn" onclick={() => exportRecords('audit-log.csv', filteredAudit)}><Download size={14}/> Export CSV</button></div><div class="table-scroll"><table><thead><tr><th>EVENT TYPE</th><th>ACTION</th><th>EVENT DETAILS</th><th>TARGET</th><th><button class="sort-button" onclick={() => sortBy('time')}>TIMESTAMP ↕</button></th></tr></thead><tbody>{#each sortRecords(filteredAudit) as a}<tr><td><span class="event-pill">{a.type}</span></td><td>{a.action}</td><td>{a.detail}</td><td>{a.target}</td><td>{a.time}</td></tr>{:else}<tr><td colspan="5" class="empty-table">No audit records match these filters.</td></tr>{/each}</tbody></table></div><div class="table-footer">Showing {filteredAudit.length} records</div></section>
+        <section class="panel table-panel"><div class="toolbar"><div class="search-field"><Search size={16}/><input id="page-search" bind:value={auditSearch} placeholder="Search action, target, or actor..."/></div><select bind:value={auditTypeFilter}><option>All actions</option>{#each [...new Set(audit.map(item => item.type))] as type}<option>{type.charAt(0) + type.slice(1).toLowerCase()}</option>{/each}</select><select bind:value={auditActorFilter}><option>All actors</option>{#each [...new Set(audit.map(item => item.actor))] as actor}<option>{actor}</option>{/each}</select><input class="date-input" type="date" bind:value={auditFrom} aria-label="Filter from date"/><input class="date-input" type="date" bind:value={auditTo} aria-label="Filter to date"/><button class="outline-btn" onclick={() => exportRecords('audit-log.csv', filteredAudit)}><Download size={14}/> Export CSV</button></div><div class="table-scroll"><table><thead><tr><th>EVENT TYPE</th><th>ACTION</th><th>EVENT DETAILS</th><th>TARGET</th><th><button class="sort-button" onclick={() => sortBy('time')}>TIMESTAMP ↕</button></th></tr></thead><tbody>{#each sortRecords(filteredAudit) as a}<tr><td><span class="event-pill">{a.type}</span></td><td>{a.action}</td><td>{a.detail}</td><td>{a.target}</td><td>{a.time}</td></tr>{:else}<tr><td colspan="5" class="empty-table">No audit records match these filters.</td></tr>{/each}</tbody></table></div><div class="table-footer">Showing {filteredAudit.length} records</div></section>
 
       {:else if page === 'Attendance & RFID'}
         <PageTitle icon={ScanLine} title="Attendance" subtitle="Record and view student attendance." action="Take Attendance" onAction={() => document.getElementById('rfid-input')?.focus()}/>
@@ -1378,6 +1461,17 @@
 
       {:else if page === 'Settings'}
         <PageTitle icon={selectedTab === 'Notifications' ? Bell : Settings} title={isAdmin ? 'Account Settings' : 'Settings'} subtitle="Manage your account profile, security credentials, and preferences."/>
+        <section class="panel demo-control-panel">
+          <div class="demo-control-copy"><span class="demo-control-icon"><Info size={18}/></span><div><h3>{isDemoMode ? 'Local demo data is active' : 'Try the portal with sample data'}</h3><p>{isDemoMode ? 'Sample records and supported edits are saved only in this browser. Your signed-in account and database are not modified.' : 'Load fictional dashboard, class, attendance, and approval records locally after signing in. No demo credentials or database records are created.'}</p></div></div>
+          <div class="demo-control-actions">
+            {#if isDemoMode}
+              <button type="button" class="soft-btn" onclick={() => startDemoMode(true)}>Reset demo data</button>
+              <button type="button" class="primary" onclick={exitDemoMode}>Exit demo mode</button>
+            {:else}
+              <button type="button" class="primary" onclick={() => startDemoMode()}>Load demo data</button>
+            {/if}
+          </div>
+        </section>
         <div class="settings-layout">
           <div class="tabs settings-tabs">
             <button class:chosen={selectedTab === 'Profile'} onclick={() => selectSettingsTab('Profile')}>Profile</button>

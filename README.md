@@ -6,7 +6,7 @@ A Svelte + Vite frontend and Express/Prisma API for the E-Index Administration a
 
 - Administration: dashboard, teachers, students, approvals, audit log, and settings.
 - Teacher: dashboard, attendance, students, classes, reports, and settings.
-- Authentication, registrations, academic records, attendance, notifications, and preferences are loaded from the API and existing MySQL database. The frontend does not contain seeded users or sample portal records.
+- Authentication and real portal records are loaded from the API and existing MySQL database. An optional, browser-local demo mode supplies fictional sample records after a real administrator or teacher signs in; it does not seed the database or create demo credentials.
 
 ## Existing environment and database
 
@@ -32,7 +32,7 @@ At startup, the API reports missing or invalid variable **names only**, then exi
 
 Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. It sends password-reset messages, teacher setup links, and registration-decision notices. The backend reads the existing `CORS_ORIGINS` setting (comma-separated) for allowed app origins; `FRONTEND_ORIGINS` is supported as a fallback. Include the exact dev origin you browse from (for example, `http://192.168.1.12:5173`) and the deployed app origin(s). `FRONTEND_URL` supplies the fallback origin for email links. Keep secrets in backend environment configuration, never frontend code.
 
-The currently configured Aiven database is MySQL 8.4.8. The existing `eindex_*` application tables were found during read-only inspection and contained no user, teacher, student, class, attendance, grade, notification, or audit records at that time. The app does not seed or reset records. Provision real accounts and academic records through HeidiSQL.
+The currently configured Aiven database is MySQL 8.4.8. The existing `eindex_*` application tables were found during read-only inspection and contained no user, teacher, student, class, attendance, grade, notification, or audit records at that time. The app does not seed or reset database records. Provision real accounts and academic records through HeidiSQL.
 
 ### Required additive database updates
 
@@ -60,6 +60,7 @@ For production, configure the same DB and Brevo variables in the hosting provide
 
 ## Authentication and data behavior
 
+- Demo mode is available from Settings only after signing into a real administrator or teacher account. It generates fictional browser-local records for dashboards, approvals, classes, students, attendance, grades, announcements, and tasks; it creates no authentication credentials and sends no email. Demo requests are intercepted in the frontend and do not write to the API or database. Use **Reset demo data** to restore the sample set or **Exit demo mode** to remove only its local storage and reload real API records.
 - The college choices in `shared/teacher-colleges.js` are provisional and have not been independently confirmed for the Guiuan Campus. The database is authoritative: `GET /api/auth/colleges` returns active choices only. Provisional migration rows start inactive; an administrator must confirm the official name and campus assignment, record a confirmation reference, and activate a college before it can be selected. Registration creates a pending teacher account, and an administrator must approve it before the teacher can sign in.
 - The additive schema/data proposal is in `server/prisma/migrations/20261115190000_add_colleges/migration.sql`. It is review-only in this change: reconcile the existing live schema and Prisma migration baseline, take a verified backup, then apply and validate it in staging before production. Existing `department` data is retained.
 - Registration validates the password confirmation on both the frontend and backend. Duplicate emails are normalized and rejected.

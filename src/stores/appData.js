@@ -10,7 +10,12 @@ const emptyData = () => ({
   colleges: [],
   audit: [],
   notifications: [],
-  settings: {}
+  settings: {},
+  upcomingExams: [],
+  announcements: [],
+  gradingTasks: [],
+  isDemoData: false,
+  demoRole: null
 });
 
 export const appData = writable(emptyData());
