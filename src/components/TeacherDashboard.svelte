@@ -4,7 +4,7 @@
   import {
     ArrowRight, BookOpen, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck,
     Clock3, FlaskConical, Laptop, Network, FileText, GraduationCap, Sparkles, Users,
-    XCircle, Zap, Megaphone
+    XCircle, Zap
   } from 'lucide-svelte';
 
   export let userSettings;
@@ -13,10 +13,6 @@
   export let attendance = [];
   export let studentCount = 0;
   export let attendanceRate = 0;
-  export let demoMode = false;
-  export let gradingTasks = [];
-  export let upcomingExams = [];
-  export let announcements = [];
   export let onNavigate;
   export let onOpenClass;
 
@@ -121,11 +117,7 @@
 <section class="stat-grid four teacher-stat-grid" aria-label="Dashboard overview">
   <Stat icon={BookOpen} iconSize={22} badgeIcon={Check} decorationIcon={BookOpen} tone="pink" value={classes.length} label="My Classes" note="View Classes →" onClick={() => onNavigate('Classes & Sections')}/>
   <Stat icon={Users} iconSize={22} badgeIcon={GraduationCap} decorationIcon={GraduationCap} tone="violet" value={studentCount} label="Total Students" note="View Students →" onClick={() => onNavigate('Students')}/>
-  {#if demoMode}
-    <Stat icon={Clock3} iconSize={22} badgeIcon={CalendarDays} decorationIcon={CalendarDays} tone="orange" value={gradingTasks.length} label="Pending Tasks" note="Review grades →" onClick={() => onNavigate('Reports')}/>
-  {:else}
-    <Stat icon={Clock3} iconSize={22} badgeIcon={CalendarDays} decorationIcon={CalendarDays} tone="orange" value={todayScheduleCount} label="Today's Schedule" note="View Schedule →" onClick={() => onNavigate('Classes & Sections')}/>
-  {/if}
+  <Stat icon={Clock3} iconSize={22} badgeIcon={CalendarDays} decorationIcon={CalendarDays} tone="orange" value={todayScheduleCount} label="Today's Schedule" note="View Schedule →" onClick={() => onNavigate('Classes & Sections')}/>
   <Stat
     icon={ClipboardCheck}
     iconSize={22}
@@ -283,38 +275,3 @@
     {/if}
   </section>
 </div>
-
-{#if demoMode}
-  <section class="demo-teacher-information-grid" aria-label="Academic updates and tasks">
-    <section class="panel demo-detail-panel">
-      <div class="panel-heading"><h3><ClipboardCheck size={17}/> Pending Grading Tasks</h3><button class="text-link" onclick={() => onNavigate('Reports')}>Open grades <ArrowRight size={13}/></button></div>
-      <div class="demo-list">
-        {#each gradingTasks as task}
-          <article class="demo-list-item"><span class="demo-list-icon task"><FileText size={16}/></span><div><strong>{task.title}</strong><small>{task.className} · {task.section}</small></div><span class="demo-list-meta">Due {task.dueDate}</span></article>
-        {:else}
-          <p class="empty-inline">No grading tasks are pending.</p>
-        {/each}
-      </div>
-    </section>
-    <section class="panel demo-detail-panel">
-      <div class="panel-heading"><h3><CalendarDays size={17}/> Upcoming Examinations</h3><button class="text-link" onclick={() => onNavigate('Classes & Sections')}>View classes <ArrowRight size={13}/></button></div>
-      <div class="demo-list">
-        {#each upcomingExams as exam}
-          <article class="demo-list-item"><span class="demo-list-icon exam"><CalendarDays size={16}/></span><div><strong>{exam.title}</strong><small>{exam.className} · {exam.section}</small></div><span class="demo-list-meta">{exam.date}<small>{exam.time}</small></span></article>
-        {:else}
-          <p class="empty-inline">No upcoming examinations are scheduled.</p>
-        {/each}
-      </div>
-    </section>
-    <section class="panel demo-detail-panel demo-announcements-panel">
-      <div class="panel-heading"><h3><Megaphone size={17}/> Announcements</h3><span class="demo-year-label">AY 2026–2027</span></div>
-      <div class="demo-list">
-        {#each announcements as announcement}
-          <article class="demo-announcement"><div><strong>{announcement.title}</strong><small>{announcement.detail}</small></div><time>{announcement.date}</time></article>
-        {:else}
-          <p class="empty-inline">No announcements are available.</p>
-        {/each}
-      </div>
-    </section>
-  </section>
-{/if}

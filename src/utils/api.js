@@ -1,5 +1,3 @@
-import { DEMO_API_UNHANDLED, handleDemoApiRequest } from '../stores/demoData.js';
-
 export class ApiError extends Error {
   constructor(message, code = 'API_ERROR', status = 0, details = null) {
     super(message);
@@ -11,9 +9,6 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(path, { method = 'GET', body } = {}) {
-  const demoResult = handleDemoApiRequest(path, { method, body });
-  if (demoResult !== DEMO_API_UNHANDLED) return demoResult;
-
   let response;
   try {
     response = await fetch(path, {

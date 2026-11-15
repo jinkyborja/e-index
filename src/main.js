@@ -4,7 +4,7 @@ import './styles.css';
 import './design-system.css';
 import './teacher-layout.css';
 import './admin-layout.css';
-import './demo-data.css';
+import './students-page.css';
 
 const app = mount(App, { target: document.getElementById('app') });
 export default app;

@@ -11,7 +11,6 @@
   import { get } from 'svelte/store';
   import { appData, setAppData, clearAppData } from './stores/appData.js';
   import { apiRequest } from './utils/api.js';
-  import { activateDemoMode, deactivateDemoMode, getDemoModeRole, isDemoModeActive } from './stores/demoData.js';
   import { navigate, routeLocation, watchHistory } from './utils/router.js';
   import { dashboardPath, pathForPage, resolvePortalRoute } from './utils/routes.js';
   import { exportCsv } from './utils/export.js';
@@ -22,7 +21,7 @@
     BookOpen, ScanLine, FileBarChart, UserRound, ShieldCheck,
     RefreshCw, Filter, Calendar, FileText, TrendingUp, Clock, CheckCircle2,
     XCircle, AlertCircle, Eye, EyeOff, KeyRound, Sparkles, Pencil, Trash2, ChevronLeft, ChevronRight,
-    ClipboardCheck, Building2, Mail, Lock, Palette, SlidersHorizontal, Sun, Moon, Camera,
+    ClipboardCheck, Building2, Mail, Lock, Palette, SlidersHorizontal, Sun, Moon, Camera, Upload,
     Info, Megaphone
   } from 'lucide-svelte';
 
@@ -76,8 +75,15 @@
   let registrationCollegeFilter = 'All Colleges';
   let registrationStatusFilter = 'Pending';
   let selectedRegistrationIds = [];
+  let selectedStudentIds = [];
   let studentProgramFilter = 'All Programs';
   let studentYearFilter = 'All Year Levels';
+  let studentCollegeFilter = 'All Colleges';
+  let studentStatusFilter = 'All Statuses';
+  let studentAdvancedFiltersOpen = false;
+  let studentCurrentPage = 1;
+  let studentPageSize = 5;
+  let openStudentMenuId = null;
   let attendanceSection = 'All Sections';
   let auditSearch = '';
   let auditTypeFilter = 'All actions';
@@ -100,7 +106,6 @@
   let teacherFormValid = false;
   let portalDataLoading = false;
   let portalDataLoaded = false;
-  let isDemoMode = false;
   let portalDataError = '';
   let portalDataLoadCount = 0;
   let formValues = {};
@@ -129,6 +134,13 @@
   let colleges = [];
   let grades = [];
   let lastPath = '';
+  const studentPreviewRecords = [
+    { id: '2024-1001', name: 'Juan Dela Cruz', program: 'BS Computer Science', collegeName: 'College of Computer Studies', year: '4th Year', status: 'Active', section: 'Section A', className: 'BSCS 4A', rfid: '' },
+    { id: '2024-1002', name: 'Maria Santos', program: 'BS Information Technology', collegeName: 'College of Computer Studies', year: '3rd Year', status: 'Active', section: 'Section B', className: 'BSIT 3B', rfid: '' },
+    { id: '2024-1003', name: 'Ana Reyes', program: 'BS Nursing', collegeName: 'College of Nursing', year: '2nd Year', status: 'Active', section: 'Section A', className: 'BSN 2A', rfid: '' },
+    { id: '2024-1004', name: 'Mark Garcia', program: 'BS Business Administration', collegeName: 'College of Business Management', year: '1st Year', status: 'Inactive', section: 'Section A', className: 'BSBA 1A', rfid: '' },
+    { id: '2024-1005', name: 'Sofia Mendoza', program: 'BSEd English', collegeName: 'College of Education', year: '4th Year', status: 'Active', section: 'Section B', className: 'BSEd 4B', rfid: '' }
+  ].map(student => ({ ...student, demoRecord: true }));
 
   onMount(() => {
     const stopHistory = watchHistory();
@@ -142,19 +154,10 @@
         authInitError = 'Unable to connect to the portal. Check your connection and try again.';
       }
       if (cancelled) return;
-      const demoRole = !user ? getDemoModeRole() : null;
-      if (!user && !demoRole) {
-        try {
-          if (isDemoModeActive()) deactivateDemoMode();
-        } catch (error) {
-          notify(error.message);
-        }
-      }
       void loadCollegeChoices();
-      if (user || demoRole) {
-        const role = user?.role || demoRole;
-        portal = role;
-        teacherAuthenticated = role === 'teacher';
+      if (user) {
+        portal = user.role;
+        teacherAuthenticated = user.role === 'teacher';
         try {
           await refreshPortalData();
         } catch (error) {
@@ -191,53 +194,6 @@
     { label: 'Settings', icon: Settings }
   ];
 
-  async function startDemoMode(role = get(authUser)?.role || getDemoModeRole(), reset = false) {
-    if (!['admin', 'teacher'].includes(role)) {
-      notify('Choose an administrator or teacher demo to continue.');
-      return;
-    }
-    if (currentUser && currentUser.role !== role) {
-      notify('Sign out before switching to a different portal role.');
-      return;
-    }
-    try {
-      activateDemoMode(role, reset);
-      portal = role;
-      teacherAuthenticated = role === 'teacher';
-      page = 'Dashboard';
-      await refreshPortalData();
-      await loadCollegeChoices();
-      navigate(dashboardPath(role), { replace: true });
-      notify(reset ? 'The local demo data was reset.' : 'Local demo data is active. No database records were changed.');
-    } catch (error) {
-      notify(error.message || 'The local demo data could not be loaded.');
-    }
-  }
-  async function exitDemoMode() {
-    try {
-      deactivateDemoMode();
-      clearAppData();
-      selectedRegistrationIds = [];
-      selectedDate = new Date().toISOString().slice(0, 10);
-      await loadCollegeChoices();
-      if (!get(authUser)) {
-        portal = 'auth';
-        teacherAuthenticated = false;
-        page = 'Dashboard';
-        navigate('/login', { replace: true });
-        notify('Demo data was removed from this browser.');
-        return;
-      }
-      await refreshPortalData();
-      go('Dashboard');
-      notify('Demo data was removed from this browser. Real portal data has been reloaded.');
-    } catch (error) {
-      clearAppData();
-      portalDataLoaded = false;
-      notify(`Demo data was removed, but portal data could not be loaded: ${error.message}`);
-    }
-  }
-
   $: navItems = portal === 'admin' ? adminNav : teacherNav;
   $: isAdmin = portal === 'admin';
   $: if (classes.length && !classes.some(item => item.name === selectedClass)) selectedClass = classes[0].name;
@@ -250,7 +206,13 @@
   $: registrations = $appData.registrations;
   $: colleges = $appData.colleges;
   $: grades = $appData.grades;
-  $: isDemoMode = Boolean($appData.isDemoData);
+  $: studentPreviewMode = isAdmin && portalDataLoaded && !portalDataError && students.length === 0;
+  $: studentPageRecords = studentPreviewMode ? studentPreviewRecords : students;
+  $: studentCollegeOptions = [...new Set(studentPageRecords.map(student => student.collegeName || student.college || student.department).filter(Boolean))].sort();
+  $: studentProgramOptions = [...new Set(studentPageRecords.map(student => student.program).filter(Boolean))].sort();
+  $: studentYearOptions = [...new Set(studentPageRecords.map(student => student.year).filter(Boolean))].sort();
+  $: activeStudentCount = studentPageRecords.filter(student => String(student.status).toLowerCase() === 'active').length;
+  $: inactiveStudentCount = studentPageRecords.length - activeStudentCount;
   $: registrationCollegeOptions = [...new Map(registrations.map(item => {
     const label = item.collegeName || item.department || '';
     return [item.collegeId || `legacy:${label}`, { value: item.collegeId || `legacy:${label}`, label }];
@@ -269,11 +231,15 @@
   $: selectedPendingRegistrations = registrations.filter(registration => registration.status === 'Pending' && selectedRegistrationIds.includes(registration.id));
   $: allVisiblePendingRegistrationsSelected = visiblePendingRegistrations.length > 0
     && visiblePendingRegistrations.every(registration => selectedRegistrationIds.includes(registration.id));
-  $: filteredStudents = students.filter(s => `${s.name} ${s.id} ${s.program}`.toLowerCase().includes(searchText.toLowerCase())
+  $: filteredStudents = studentPageRecords.filter(s => `${s.name} ${s.id} ${s.program} ${s.collegeName || s.college || s.department || ''}`.toLowerCase().includes(searchText.toLowerCase())
     && (studentProgramFilter === 'All Programs' || s.program === studentProgramFilter)
-    && (studentYearFilter === 'All Year Levels' || s.year === studentYearFilter));
+    && (studentYearFilter === 'All Year Levels' || s.year === studentYearFilter)
+    && (studentCollegeFilter === 'All Colleges' || (s.collegeName || s.college || s.department) === studentCollegeFilter)
+    && (studentStatusFilter === 'All Statuses' || String(s.status).toLowerCase() === studentStatusFilter.toLowerCase()));
   $: visibleTeachers = sortRecords(filteredTeachers).slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  $: visibleStudents = sortRecords(filteredStudents).slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  $: studentTotalPages = Math.max(1, Math.ceil(filteredStudents.length / studentPageSize));
+  $: visibleStudents = sortRecords(filteredStudents).slice((studentCurrentPage - 1) * studentPageSize, studentCurrentPage * studentPageSize);
+  $: allVisibleStudentsSelected = visibleStudents.length > 0 && visibleStudents.every(student => selectedStudentIds.includes(student.id));
   $: teacherCount = teachers.filter(t => t.role === 'Teacher' && t.status === 'Approved' && t.active !== false).length;
   $: studentCount = students.filter(s => s.status === 'Active').length;
   $: pendingCount = registrations.filter(r => r.status === 'Pending').length;
@@ -281,17 +247,11 @@
   $: teacherFormValid = isTeacherFormValid(formValues);
   $: inactiveCount = teachers.filter(t => t.status === 'Inactive').length;
   $: rejectedCount = teachers.filter(t => t.status === 'Rejected').length;
-  $: totalTeacherCount = teachers.filter(t => t.role === 'Teacher').length;
-  $: activeCollegeCount = colleges.filter(college => college.isActive).length;
-  $: activeClassCount = classes.filter(classItem => classItem.active !== false).length;
-  $: systemUserCount = totalTeacherCount + studentCount + (isDemoMode ? 1 : 0);
   $: reportPeriods = [...new Set(grades.map(item => item.period).filter(Boolean))];
   $: if (reportPeriods.length && !reportPeriods.includes(reportPeriod)) reportPeriod = reportPeriods[0];
-  $: currentAcademicYear = isDemoMode ? '2026-2027' : `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+  $: currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
   $: approvalRate = calculateApprovalRate(teachers, registrations);
-  $: settingsKey = isDemoMode
-    ? (isAdmin ? 'admin' : 'teacher:demo')
-    : isAdmin ? 'admin' : `teacher:${currentUser?.email || 'default'}`;
+  $: settingsKey = isAdmin ? 'admin' : `teacher:${currentUser?.email || 'default'}`;
   $: userSettings = $appData.settings[settingsKey] || {
     firstName: nameParts[0] || '',
     lastName: nameParts.slice(1).join(' '),
@@ -327,7 +287,7 @@
     && (!auditTo || new Date(record.time) <= new Date(`${auditTo}T23:59:59`)));
 
   function go(label) {
-    const role = get(authUser)?.role || (isDemoMode ? getDemoModeRole() : null);
+    const role = get(authUser)?.role;
     const path = pathForPage(role, label);
     if (!path) {
       notify('This page is not available for your account.');
@@ -377,7 +337,6 @@
     if (pathname === lastPath) return;
     lastPath = pathname;
     const user = get(authUser);
-    const demoRole = !user ? getDemoModeRole() : null;
 
     if (pathname === '/reset-password') {
       if (user) {
@@ -394,11 +353,9 @@
     }
 
     if (pathname === '/login') {
-      if (user || demoRole) {
-        const role = user?.role || demoRole;
-        portal = role;
-        teacherAuthenticated = role === 'teacher';
-        navigate(dashboardPath(role), { replace: true });
+      if (user) {
+        portal = user.role;
+        navigate(dashboardPath(user.role), { replace: true });
         return;
       }
       portal = 'auth';
@@ -409,24 +366,22 @@
 
     const route = resolvePortalRoute(pathname);
     if (!route) {
-      const role = user?.role || demoRole;
-      navigate(role ? dashboardPath(role) : '/login', { replace: true });
+      navigate(user ? dashboardPath(user.role) : '/login', { replace: true });
       return;
     }
-    if (!user && !demoRole) {
+    if (!user) {
       portal = 'auth';
       navigate('/login', { replace: true });
       return;
     }
-    const role = user?.role || demoRole;
-    if (role !== route.role) {
-      portal = role;
-      navigate(dashboardPath(role), { replace: true });
+    if (user.role !== route.role) {
+      portal = user.role;
+      navigate(dashboardPath(user.role), { replace: true });
       return;
     }
 
-    portal = role;
-    teacherAuthenticated = role === 'teacher';
+    portal = user.role;
+    teacherAuthenticated = user.role === 'teacher';
     selectPage(route.page);
   }
   function focusPageSearch() {
@@ -481,21 +436,11 @@
     }
   }
   async function logOut() {
-    if (!get(authUser) && isDemoModeActive()) {
-      await exitDemoMode();
-      return;
-    }
     try {
       await signOut();
     } catch (error) {
       notify(error.message);
       return;
-    }
-    let cleanupError = '';
-    try {
-      if (isDemoModeActive()) deactivateDemoMode();
-    } catch (error) {
-      cleanupError = ` Signed out, but local demo data could not be removed: ${error.message}`;
     }
     await loadCollegeChoices();
     clearAppData();
@@ -504,7 +449,7 @@
     rememberMe = false;
     setAuthMode('login');
     navigate('/login', { replace: true });
-    notify(cleanupError || 'You have been logged out.');
+    notify('You have been logged out.');
   }
   async function handleTeacherAuth(event) {
     event.preventDefault();
@@ -577,13 +522,9 @@
     portalDataError = '';
     try {
       const data = await apiRequest('/api/data');
-      const previousDataWasDemo = get(appData).isDemoData;
       setAppData(data);
-      if (data.isDemoData && !previousDataWasDemo && data.attendance?.[0]?.date) selectedDate = data.attendance[0].date;
       selectedRegistrationIds = selectedRegistrationIds.filter(id => data.registrations?.some(registration => registration.id === id && registration.status === 'Pending'));
-      const key = data.isDemoData
-        ? (data.demoRole === 'admin' ? 'admin' : 'teacher:demo')
-        : currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
+      const key = currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
       const settings = data.settings?.[key];
       if (settings?.notifications) notificationPreferences = { ...settings.notifications };
       portalDataLoaded = true;
@@ -692,6 +633,32 @@
       ? selectedRows.filter(id => !ids.includes(id))
       : [...new Set([...selectedRows, ...ids])];
   }
+  function toggleStudentRow(id) {
+    selectedStudentIds = selectedStudentIds.includes(id)
+      ? selectedStudentIds.filter(studentId => studentId !== id)
+      : [...selectedStudentIds, id];
+  }
+  function toggleAllStudentRows(records) {
+    const ids = records.map(student => student.id);
+    selectedStudentIds = ids.every(id => selectedStudentIds.includes(id))
+      ? selectedStudentIds.filter(id => !ids.includes(id))
+      : [...new Set([...selectedStudentIds, ...ids])];
+  }
+  function handleStudentWriteUnavailable(action) {
+    notify(`${action} is not available in the current student API. No records were changed.`);
+  }
+  function handleStudentBulkAction(event) {
+    const action = event.currentTarget.value;
+    if (action === 'export' || action === 'export-selected') {
+      const selected = studentPageRecords.filter(student => selectedStudentIds.includes(student.id) && !student.demoRecord);
+      exportRecords('students-selected.csv', selected);
+    } else if (action === 'clear') {
+      selectedStudentIds = [];
+    } else if (action) {
+      notify('Choose an available bulk action.');
+    }
+    event.currentTarget.value = '';
+  }
   function changePageSize(event) {
     pageSize = Number(event.currentTarget.value);
     currentPage = 1;
@@ -775,9 +742,7 @@
           { method: modalRecord ? 'PATCH' : 'POST', body },
           modalRecord
             ? 'Teacher account updated.'
-            : isDemoMode
-              ? 'Demo teacher account added locally. No email was sent.'
-              : 'Teacher account added. A password reset email was sent.'
+            : 'Teacher account added. A password reset email was sent.'
         );
         if (saved) {
           teacherFormSubmitting = false;
@@ -855,8 +820,7 @@
           refreshMessage = ` Portal data could not refresh: ${error.message}`;
         }
         const messages = [`${approvedIds.length} of ${record.length} registration(s) approved.`];
-        if (isDemoMode) messages.push('Demo records were updated locally; no emails were sent.');
-        else if (failedEmailNotifications) messages.push(`Email notification could not be submitted for ${failedEmailNotifications} applicant(s).`);
+        if (failedEmailNotifications) messages.push(`Email notification could not be submitted for ${failedEmailNotifications} applicant(s).`);
         if (failedRequests.length) messages.push(`${failedRequests.length} registration(s) could not be updated: ${failedRequests[0]}`);
         if (refreshMessage) messages.push(refreshMessage.trim());
         notify(messages.join(' '));
@@ -1038,10 +1002,10 @@
           photo: profilePhoto || ''
         }
       });
-      if (!isDemoMode) authUser.set({ ...currentUser, ...result.user });
+      authUser.set({ ...currentUser, ...result.user });
       profileEdited = false;
       await refreshPortalData();
-      notify(isDemoMode ? 'Demo profile changes saved locally.' : 'Profile changes saved.');
+      notify('Profile changes saved.');
     } catch (error) {
       notify(error.message);
     }
@@ -1237,16 +1201,6 @@
               <button class="auth-submit" type="submit" disabled={!authReady || (authMode === 'signup' && (collegeChoicesLoading || activeCollegeChoices.length === 0 || !signupCollegeId))}>{authMode === 'login' ? 'Sign in to your account' : 'Submit Request'} <ArrowRight size={17}/></button>
             </form>
           {/if}
-          {#if authMode === 'login' && authReady && !currentUser && !forgotPasswordMode && !resetPasswordMode}
-            <section class="auth-demo-entry" aria-label="Explore fictional dashboard data">
-              <p>Want to preview the portal?</p>
-              <div>
-                <button type="button" class="auth-demo-button" onclick={() => startDemoMode('admin')}>Explore Admin Demo</button>
-                <button type="button" class="auth-demo-button" onclick={() => startDemoMode('teacher')}>Explore Teacher Demo</button>
-              </div>
-              <small>Fictional browser-only records. No login, database changes, or emails.</small>
-            </section>
-          {/if}
         </div>
       </div>
       <footer class="auth-panel-footer">© 2026 E-Index <span>·</span> Built for better learning</footer>
@@ -1274,7 +1228,7 @@
       {/each}
     </nav>
     <div class="sidebar-bottom">
-      <button class="nav-item" onclick={logOut}><LogOut size={17}/><span>{isDemoMode && !currentUser ? 'Exit demo' : 'Log out'}</span></button>
+      <button class="nav-item" onclick={logOut}><LogOut size={17}/><span>Log out</span></button>
       <button class="nav-item collapse-item" aria-label={sidebarCollapsed ? 'Expand menu' : 'Collapse menu'} onclick={() => sidebarCollapsed = !sidebarCollapsed}><PanelLeftClose size={17}/><span>{sidebarCollapsed ? 'Expand menu' : 'Collapse menu'}</span></button>
     </div>
   </aside>
@@ -1294,27 +1248,16 @@
     </header>
 
     <div class="page-content">
-      {#if isDemoMode}
-        <aside class="demo-mode-banner" role="status">
-          <span><Info size={16}/><strong>Local demo data</strong><span>Fictional records and edits stay in this browser. No database changes or emails.</span></span>
-          <button type="button" class="demo-banner-action" onclick={() => go('Settings')}>Manage demo data</button>
-        </aside>
-      {/if}
       {#if page === 'Dashboard' && isAdmin}
         <AdminDashboard
           userSettings={userSettings}
           teacherCount={teacherCount}
-          totalTeacherCount={totalTeacherCount}
           studentCount={studentCount}
           pendingCount={pendingCount}
           approvalRate={approvalRate}
           inactiveCount={inactiveCount}
           rejectedCount={rejectedCount}
-          activeCollegeCount={activeCollegeCount}
-          activeClassCount={activeClassCount}
-          systemUserCount={systemUserCount}
           academicYear={currentAcademicYear}
-          demoMode={isDemoMode}
           attendance={attendance}
           audit={audit}
           onNavigate={go}
@@ -1327,10 +1270,6 @@
           attendance={attendance}
           studentCount={studentCount}
           attendanceRate={attendanceRate}
-          demoMode={isDemoMode}
-          gradingTasks={$appData.gradingTasks}
-          upcomingExams={$appData.upcomingExams}
-          announcements={$appData.announcements}
           onNavigate={go}
           onOpenClass={openTeacherClass}
         />
@@ -1396,6 +1335,152 @@
               <button class="pagination" type="button" aria-label="Previous page" disabled={currentPage === 1} onclick={() => currentPage -= 1}><ChevronLeft size={14}/></button>
               <span>Page {currentPage} of {Math.max(1, Math.ceil(filteredTeachers.length / pageSize))}</span>
               <button class="pagination" type="button" aria-label="Next page" disabled={currentPage >= Math.ceil(filteredTeachers.length / pageSize)} onclick={() => currentPage += 1}><ChevronRight size={14}/></button>
+            </div>
+          </section>
+        </div>
+
+      {:else if page === 'Students' && isAdmin}
+        <div class="students-page">
+          <header class="students-page-header">
+            <div class="students-page-title">
+              <span class="students-title-icon"><GraduationCap size={21}/></span>
+              <div>
+                <div class="students-breadcrumb"><span>Administration</span><span aria-hidden="true">/</span><span>Students</span></div>
+                <h1>Students</h1>
+                <p>Manage student records, enrollment details, and account status.</p>
+              </div>
+            </div>
+            <div class="students-header-actions">
+              <button class="students-button students-button-secondary" type="button" onclick={() => handleStudentWriteUnavailable('Student import')}><Upload size={16}/>Import Students</button>
+              <button class="students-button students-button-primary" type="button" onclick={() => handleStudentWriteUnavailable('Adding students')}><Plus size={16}/>Add Student</button>
+            </div>
+          </header>
+
+          {#if studentPreviewMode}
+            <div class="students-preview-note" role="status"><Info size={15}/><span>Showing fictional preview records for layout testing. These records are not saved and will not be exported.</span></div>
+          {/if}
+
+          <section class="students-stat-grid" aria-label="Student statistics">
+            <article class="students-stat-card">
+              <span class="students-stat-icon students-stat-icon-plum"><GraduationCap size={18}/></span>
+              <div><p>Total Students</p><strong>{studentPageRecords.length}</strong><span>Current records</span></div>
+            </article>
+            <article class="students-stat-card">
+              <span class="students-stat-icon students-stat-icon-green"><CheckCircle2 size={18}/></span>
+              <div><p>Active Students</p><strong>{activeStudentCount}</strong><span>Active accounts</span></div>
+            </article>
+            <article class="students-stat-card">
+              <span class="students-stat-icon students-stat-icon-gray"><XCircle size={18}/></span>
+              <div><p>Inactive Students</p><strong>{inactiveStudentCount}</strong><span>Inactive accounts</span></div>
+            </article>
+            <article class="students-stat-card">
+              <span class="students-stat-icon students-stat-icon-pink"><TrendingUp size={18}/></span>
+              <div><p>Programs</p><strong>{studentProgramOptions.length}</strong><span>Represented in records</span></div>
+            </article>
+          </section>
+
+          <section class="students-records-card" aria-labelledby="student-records-title">
+            <div class="students-records-heading">
+              <div>
+                <h2 id="student-records-title">Student Records</h2>
+                <p>Search, filter, and review student information.</p>
+              </div>
+              <button class="students-button students-button-secondary students-export-button" type="button" onclick={() => exportRecords('students.csv', filteredStudents.filter(student => !student.demoRecord))}><Download size={15}/>Export CSV</button>
+            </div>
+            <div class="students-filter-toolbar">
+              <label class="students-search">
+                <Search size={16}/>
+                <input id="student-record-search" bind:value={searchText} oninput={() => studentCurrentPage = 1} aria-label="Search by student name, program, or ID" placeholder="Search name, program, or ID..."/>
+              </label>
+              <select aria-label="Filter by college" bind:value={studentCollegeFilter} onchange={() => studentCurrentPage = 1} disabled={!studentCollegeOptions.length}>
+                <option>All Colleges</option>
+                {#each studentCollegeOptions as college}<option value={college}>{college}</option>{/each}
+              </select>
+              <select aria-label="Filter by program" bind:value={studentProgramFilter} onchange={() => studentCurrentPage = 1}>
+                <option>All Programs</option>
+                {#each studentProgramOptions as program}<option value={program}>{program}</option>{/each}
+              </select>
+              <select aria-label="Filter by year level" bind:value={studentYearFilter} onchange={() => studentCurrentPage = 1}>
+                <option>All Year Levels</option>
+                {#each studentYearOptions as year}<option value={year}>{year}</option>{/each}
+              </select>
+              <button class:students-filter-active={studentAdvancedFiltersOpen} class="students-filter-toggle" type="button" aria-expanded={studentAdvancedFiltersOpen} onclick={() => studentAdvancedFiltersOpen = !studentAdvancedFiltersOpen}><Filter size={15}/>Filters</button>
+            </div>
+            {#if studentAdvancedFiltersOpen}
+              <div class="students-advanced-filter">
+                <label>Status
+                  <select aria-label="Filter by account status" bind:value={studentStatusFilter} onchange={() => studentCurrentPage = 1}>
+                    <option>All Statuses</option><option>Active</option><option>Inactive</option>
+                  </select>
+                </label>
+                <button class="students-clear-filters" type="button" onclick={() => { searchText = ''; studentCollegeFilter = 'All Colleges'; studentProgramFilter = 'All Programs'; studentYearFilter = 'All Year Levels'; studentStatusFilter = 'All Statuses'; studentCurrentPage = 1; }}>Clear filters</button>
+              </div>
+            {/if}
+
+            <div class="students-bulk-toolbar">
+              <div class="students-selection-copy">{#if selectedStudentIds.length}<strong>{selectedStudentIds.length}</strong> student{selectedStudentIds.length === 1 ? '' : 's'} selected{:else}<span>Select records to use bulk actions.</span>{/if}</div>
+              <select aria-label="Student bulk actions" onchange={handleStudentBulkAction}>
+                <option value="">Bulk Actions</option>
+                <option value="export-selected">Export selected CSV</option>
+                <option value="clear">Clear selection</option>
+              </select>
+            </div>
+
+            <div class="students-table-scroll">
+              <table class="students-table">
+                <thead><tr>
+                  <th scope="col" class="students-checkbox-cell"><input type="checkbox" checked={allVisibleStudentsSelected} onchange={() => toggleAllStudentRows(visibleStudents)} aria-label="Select all visible students"/></th>
+                  <th scope="col"><button class="students-sort-button" type="button" onclick={() => sortBy('name')}>Student <span aria-hidden="true">↕</span></button></th>
+                  <th scope="col"><button class="students-sort-button" type="button" onclick={() => sortBy('id')}>Student ID <span aria-hidden="true">↕</span></button></th>
+                  <th scope="col"><button class="students-sort-button" type="button" onclick={() => sortBy('collegeName')}>College / Department <span aria-hidden="true">↕</span></button></th>
+                  <th scope="col"><button class="students-sort-button" type="button" onclick={() => sortBy('program')}>Program <span aria-hidden="true">↕</span></button></th>
+                  <th scope="col"><button class="students-sort-button" type="button" onclick={() => sortBy('year')}>Year Level <span aria-hidden="true">↕</span></button></th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="students-actions-heading">Actions</th>
+                </tr></thead>
+                <tbody>
+                  {#each visibleStudents as student (student.id)}
+                    <tr>
+                      <td class="students-checkbox-cell"><input type="checkbox" checked={selectedStudentIds.includes(student.id)} onchange={() => toggleStudentRow(student.id)} aria-label={`Select ${student.name}`}/></td>
+                      <td><button class="students-name-link" type="button" onclick={() => openStudentDetails(student)}><span class="students-avatar">{student.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><span><strong>{student.name}</strong><small>{student.email || student.className || student.section || 'Student'}</small></span></button></td>
+                      <td class="students-id-cell">{student.id}</td>
+                      <td>{student.collegeName || student.college || student.department || '—'}</td>
+                      <td>{student.program || '—'}</td>
+                      <td>{student.year || '—'}</td>
+                      <td><span class:students-status-active={String(student.status).toLowerCase() === 'active'} class:students-status-inactive={String(student.status).toLowerCase() !== 'active'} class="students-status">{student.status || 'Unknown'}</span></td>
+                      <td>
+                        <div class="students-row-actions">
+                          <button class="students-icon-action" type="button" aria-label={`View ${student.name}`} title="View student" onclick={() => openStudentDetails(student)}><Eye size={16}/></button>
+                          <button class="students-icon-action" type="button" aria-label={`Edit ${student.name}`} title="Edit student" onclick={() => handleStudentWriteUnavailable('Editing student records')}><Pencil size={15}/></button>
+                          <div class="students-more-wrap">
+                            <button class="students-icon-action" type="button" aria-label={`More actions for ${student.name}`} aria-expanded={openStudentMenuId === student.id} onclick={() => openStudentMenuId = openStudentMenuId === student.id ? null : student.id}><MoreHorizontal size={17}/></button>
+                            {#if openStudentMenuId === student.id}
+                              <div class="students-more-menu">
+                                <button type="button" onclick={() => { openStudentMenuId = null; openStudentDetails(student); }}><Eye size={14}/>View details</button>
+                                <button type="button" onclick={() => { openStudentMenuId = null; exportRecords('student-record.csv', student.demoRecord ? [] : [student]); }}><Download size={14}/>Export record</button>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  {:else}
+                    <tr><td colspan="8" class="students-empty-row"><span class="students-empty-icon"><GraduationCap size={22}/></span><strong>No student records found</strong><span>Try adjusting your search or filters.</span></td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="students-table-footer">
+              <label>Rows per page
+                <select aria-label="Student rows per page" bind:value={studentPageSize} onchange={() => studentCurrentPage = 1}><option value={5}>5</option><option value={10}>10</option><option value={25}>25</option></select>
+              </label>
+              <span class="students-pagination-count">Showing {filteredStudents.length ? (studentCurrentPage - 1) * studentPageSize + 1 : 0}–{Math.min(studentCurrentPage * studentPageSize, filteredStudents.length)} of {filteredStudents.length}</span>
+              <div class="students-pagination">
+                <button type="button" aria-label="Previous page" disabled={studentCurrentPage <= 1} onclick={() => studentCurrentPage -= 1}><ChevronLeft size={16}/></button>
+                <span>Page {studentCurrentPage} of {studentTotalPages}</span>
+                <button type="button" aria-label="Next page" disabled={studentCurrentPage >= studentTotalPages} onclick={() => studentCurrentPage += 1}><ChevronRight size={16}/></button>
+              </div>
             </div>
           </section>
         </div>
@@ -1498,17 +1583,6 @@
 
       {:else if page === 'Settings'}
         <PageTitle icon={selectedTab === 'Notifications' ? Bell : Settings} title={isAdmin ? 'Account Settings' : 'Settings'} subtitle="Manage your account profile, security credentials, and preferences."/>
-        <section class="panel demo-control-panel">
-          <div class="demo-control-copy"><span class="demo-control-icon"><Info size={18}/></span><div><h3>{isDemoMode ? 'Local demo data is active' : 'Try the portal with sample data'}</h3><p>{isDemoMode ? 'Sample records and supported edits are saved only in this browser. Your signed-in account and database are not modified.' : 'Load fictional dashboard, class, attendance, and approval records locally after signing in. No demo credentials or database records are created.'}</p></div></div>
-          <div class="demo-control-actions">
-            {#if isDemoMode}
-              <button type="button" class="soft-btn" onclick={() => startDemoMode(undefined, true)}>Reset demo data</button>
-              <button type="button" class="primary" onclick={exitDemoMode}>Exit demo mode</button>
-            {:else}
-              <button type="button" class="primary" onclick={() => startDemoMode()}>Load demo data</button>
-            {/if}
-          </div>
-        </section>
         <div class="settings-layout">
           <div class="tabs settings-tabs">
             <button class:chosen={selectedTab === 'Profile'} onclick={() => selectSettingsTab('Profile')}>Profile</button>
@@ -1554,7 +1628,7 @@
                     <label>First Name<span class="teacher-profile-field"><UserRound size={16}/><input name="firstName" value={userSettings.firstName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
                     <label>Last Name<span class="teacher-profile-field"><UserRound size={16}/><input name="lastName" value={userSettings.lastName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
                     <label class="full">Email Address<span class="teacher-profile-field"><Mail size={16}/><input name="email" type="email" value={userSettings.email} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
-                    <label class="full">{isAdmin ? 'Department' : 'College / Department'}<span class="teacher-profile-field"><Building2 size={16}/>{#if isAdmin}<input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/>{:else}<select name="collegeId" value={userSettings.collegeId || ''} onchange={event => updateProfileEdited(event.currentTarget.form)}>{#if userSettings.collegeId && !activeCollegeChoices.some(college => college.id === userSettings.collegeId)}<option value={userSettings.collegeId}>{userSettings.collegeName || userSettings.department}{userSettings.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}{#if !userSettings.collegeId}<option value="" disabled>Select your college</option>{/if}{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select>{/if}</span></label>
+                    <label class="full">{isAdmin ? 'Department' : 'College / Department'}<span class="teacher-profile-field">{#if isAdmin}<Building2 size={16}/><input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/>{:else}<Building2 size={16}/><select class="teacher-profile-college-select" name="collegeId" value={userSettings.collegeId || ''} onchange={event => updateProfileEdited(event.currentTarget.form)}>{#if userSettings.collegeId && !activeCollegeChoices.some(college => college.id === userSettings.collegeId)}<option value={userSettings.collegeId}>{userSettings.collegeName || userSettings.department}{userSettings.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}{#if !userSettings.collegeId}<option value="" disabled>Select your college</option>{/if}{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select><ChevronDown class="teacher-profile-college-chevron" size={16} aria-hidden="true"/>{/if}</span></label>
                     {#if !isAdmin && collegeChoicesError}<p class="auth-error" role="alert">{collegeChoicesError}</p>{/if}
                   </div>
                   <div class="form-actions"><button class="primary" type="submit"><Check size={16}/>Save Changes</button></div>

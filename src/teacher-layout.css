@@ -2207,6 +2207,40 @@
   box-shadow: none;
 }
 
+.teacher-profile-field .teacher-profile-college-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--eindex-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.teacher-profile-field .teacher-profile-college-select::-ms-expand {
+  display: none;
+}
+
+.teacher-profile-college-chevron {
+  flex: 0 0 auto;
+  color: var(--eindex-muted);
+  pointer-events: none;
+}
+
 .teacher-profile-form .form-actions {
   display: flex;
   justify-content: flex-end;
