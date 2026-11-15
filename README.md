@@ -60,9 +60,10 @@ For production, configure the same DB and Brevo variables in the hosting provide
 
 ## Authentication and data behavior
 
-- Public teacher registration accepts the college options in `shared/teacher-colleges.js`. This is the provisional ESSU–Guiuan Campus list and is shared by the frontend and backend; update that file if the university confirms changes. Registration creates a pending database account, and an administrator must approve it before the teacher can sign in.
+- The college choices in `shared/teacher-colleges.js` are provisional and have not been independently confirmed for the Guiuan Campus. The database is authoritative: `GET /api/auth/colleges` returns active choices only. Provisional migration rows start inactive; an administrator must confirm the official name and campus assignment, record a confirmation reference, and activate a college before it can be selected. Registration creates a pending teacher account, and an administrator must approve it before the teacher can sign in.
+- The additive schema/data proposal is in `server/prisma/migrations/20261115190000_add_colleges/migration.sql`. It is review-only in this change: reconcile the existing live schema and Prisma migration baseline, take a verified backup, then apply and validate it in staging before production. Existing `department` data is retained.
 - Registration validates the password confirmation on both the frontend and backend. Duplicate emails are normalized and rejected.
-- Administrators review the applicant's name, email, and college. Decisions retain the in-app notification and audit record and also attempt an email notice through Brevo.
+- Administrators review the applicant's name, email, and college. Decisions retain the in-app notification and audit record and also attempt an email notice through Brevo. Existing `department` values remain in API responses during the college-ID transition.
 - Administrator accounts must be provisioned by an authorized operator. The frontend has no default or sample administrator credentials.
 - Login checks the stored bcrypt password and account status, then uses the stored role to open the appropriate portal. Sessions use random server-side tokens stored as hashes and HttpOnly cookies.
 - Password reset uses single-use, hashed tokens that expire after 30 minutes. Responses do not disclose whether an email is registered, and requests are rate limited.
@@ -74,8 +75,9 @@ For production, configure the same DB and Brevo variables in the hosting provide
 
 - Administration: `/admin/dashboard`, `/admin/teachers`, `/admin/students`, `/admin/approvals`, `/admin/audit-log`, `/admin/settings`
 - Teacher: `/teacher/dashboard`, `/teacher/attendance`, `/teacher/students`, `/teacher/classes`, `/teacher/reports`, `/teacher/settings`
-- Authentication: `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`, `/api/auth/forgot-password`, `/api/auth/reset-password`
+- Authentication: `/api/auth/colleges`, `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`, `/api/auth/forgot-password`, `/api/auth/reset-password`
 - Portal data: `/api/data`
+- College administration: `POST /api/data/colleges/:id/activate` requires explicit name/campus confirmations and a nonempty reference; `POST /api/data/colleges/:id/deactivate` preserves existing user assignments. Both actions are administrator-only and audited.
 
 ## Verification
 

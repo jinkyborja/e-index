@@ -28,10 +28,14 @@ export async function signIn(email, password, rememberMe) {
   return { account: result.user, error: null };
 }
 
-export async function registerTeacher(name, email, department, password, confirmPassword) {
+export async function fetchActiveColleges() {
+  return apiRequest('/api/auth/colleges');
+}
+
+export async function registerTeacher(name, email, collegeId, password, confirmPassword) {
   return apiRequest('/api/auth/register', {
     method: 'POST',
-    body: { name, email, department, password, confirmPassword }
+    body: { name, email, collegeId, password, confirmPassword }
   });
 }
 

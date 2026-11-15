@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import {
-    authUser, restoreAuth, signIn, signOut, registerTeacher,
+    authUser, restoreAuth, signIn, signOut, registerTeacher, fetchActiveColleges,
     requestPasswordReset, resetPassword
   } from './stores/auth.js';
   import MiniStat from './components/MiniStat.svelte';
@@ -14,7 +14,6 @@
   import { navigate, routeLocation, watchHistory } from './utils/router.js';
   import { dashboardPath, pathForPage, resolvePortalRoute } from './utils/routes.js';
   import { exportCsv } from './utils/export.js';
-  import { TEACHER_COLLEGES } from '../shared/teacher-colleges.js';
   import {
     LayoutDashboard, Users, GraduationCap, Clock3, ClipboardList, Activity,
     Settings, Search, Bell, ChevronDown, Menu, X, LogOut, PanelLeftClose,
@@ -41,7 +40,10 @@
   let resetPasswordConfirm = '';
   let loginEmail = '';
   let signupName = '';
-  let signupDepartment = '';
+  let signupCollegeId = '';
+  let activeCollegeChoices = [];
+  let collegeChoicesLoading = true;
+  let collegeChoicesError = '';
   let rememberMe = false;
   let authError = '';
   let showPassword = false;
@@ -105,6 +107,7 @@
   let attendance = [];
   let audit = [];
   let registrations = [];
+  let colleges = [];
   let grades = [];
   let lastPath = '';
 
@@ -113,6 +116,7 @@
     let unsubscribe = () => {};
     let cancelled = false;
     const initialize = async () => {
+      void loadCollegeChoices();
       let user = null;
       try {
         user = await restoreAuth();
@@ -169,6 +173,7 @@
   $: attendance = $appData.attendance;
   $: audit = $appData.audit;
   $: registrations = $appData.registrations;
+  $: colleges = $appData.colleges;
   $: grades = $appData.grades;
   $: filteredTeachers = teachers.filter(t => `${t.name} ${t.email} ${t.department} ${t.id}`.toLowerCase().includes(searchText.toLowerCase())
     && (teacherRoleFilter === 'All Roles' || t.role === teacherRoleFilter)
@@ -193,6 +198,9 @@
     lastName: nameParts.slice(1).join(' '),
     email: currentUser?.email || '',
     department: currentUser?.department || '',
+    collegeId: currentUser?.collegeId || '',
+    collegeName: currentUser?.collegeName || null,
+    collegeIsActive: currentUser?.collegeIsActive ?? null,
     photo: currentUser?.photo || '',
     notifications: currentUser?.notificationPreferences || { updates: true, attendance: true, announcements: true },
     appearance: currentUser?.appearance || 'Light'
@@ -257,7 +265,9 @@
     profileEdited = String(values.get('firstName') || '').trim() !== userSettings.firstName
       || String(values.get('lastName') || '').trim() !== userSettings.lastName
       || String(values.get('email') || '').trim().toLowerCase() !== userSettings.email
-      || String(values.get('department') || '').trim() !== userSettings.department
+      || (isAdmin
+        ? String(values.get('department') || '').trim() !== userSettings.department
+        : String(values.get('collegeId') || '') !== (userSettings.collegeId || ''))
       || profilePhoto !== (userSettings.photo || '');
   }
   function openTeacherClass(className) {
@@ -390,14 +400,14 @@
         return;
       }
       try {
-        await registerTeacher(signupName.trim(), loginEmail.trim().toLowerCase(), signupDepartment, signupPassword, signupPasswordConfirm);
+        await registerTeacher(signupName.trim(), loginEmail.trim().toLowerCase(), signupCollegeId, signupPassword, signupPasswordConfirm);
       } catch (error) {
         authError = authErrorMessage(error);
         return;
       }
       loginEmail = loginEmail.trim().toLowerCase();
       signupName = '';
-      signupDepartment = '';
+      signupCollegeId = '';
       setAuthMode('login');
       notify('Registration submitted. An administrator must approve your account.');
       return;
@@ -430,6 +440,21 @@
     authError = '';
     if (authMode === 'login') loginPassword = event.currentTarget.value;
     else signupPassword = event.currentTarget.value;
+  }
+  async function loadCollegeChoices() {
+    collegeChoicesLoading = true;
+    collegeChoicesError = '';
+    try {
+      const choices = await fetchActiveColleges();
+      if (!Array.isArray(choices)) throw new Error('The active college list could not be loaded.');
+      activeCollegeChoices = choices;
+      if (!choices.some(college => college.id === signupCollegeId)) signupCollegeId = '';
+    } catch (error) {
+      activeCollegeChoices = [];
+      collegeChoicesError = error.message || 'The active college list could not be loaded.';
+    } finally {
+      collegeChoicesLoading = false;
+    }
   }
   async function refreshPortalData() {
     const data = await apiRequest('/api/data');
@@ -536,8 +561,11 @@
     modalRecord = record;
     modalTitle = record ? 'Edit Teacher' : 'Add Teacher';
     modalMode = 'teacher-form';
-    formValues = record ? { ...record } : { name: '', id: '', department: '', email: '', role: 'Teacher', status: 'Approved', active: true };
+    formValues = record ? { ...record } : { name: '', id: '', collegeId: '', email: '', role: 'Teacher', status: 'Approved', active: true };
     showModal = true;
+  }
+  function openCollegeActivation(college) {
+    openModal(`Activate ${college.code}`, college, 'college-activate');
   }
   function openTeacherDetails(record) {
     openModal(`Account: ${record.name}`, record, 'teacher-view');
@@ -562,14 +590,14 @@
     if (modalMode === 'teacher-form') {
       const email = String(values.email).trim().toLowerCase();
       const staffId = String(values.id).trim();
-      if (!String(values.name).trim() || !/^\d+$/.test(staffId) || !String(values.department).trim()) {
-        notify('Enter a name, numeric staff ID, and department.');
+      if (!String(values.name).trim() || !/^\d+$/.test(staffId) || !String(values.collegeId || '').trim()) {
+        notify('Enter a name, numeric staff ID, and select an active college.');
         return;
       }
       const body = {
         fullName: String(values.name).trim(),
         staffId,
-        department: String(values.department).trim(),
+        collegeId: String(values.collegeId).trim(),
         email,
         status: String(values.status).toUpperCase()
       };
@@ -580,6 +608,25 @@
         modalRecord ? 'Teacher account updated.' : 'Teacher account added. A password reset email was sent.'
       );
       if (saved) closeModal();
+      return;
+    }
+    if (modalMode === 'college-activate') {
+      const saved = await mutatePortalData(
+        `/api/data/colleges/${encodeURIComponent(modalRecord.id)}/activate`,
+        {
+          method: 'POST',
+          body: {
+            officialNameConfirmed: values.officialNameConfirmed === 'on',
+            guiuanCampusAssignmentConfirmed: values.guiuanCampusAssignmentConfirmed === 'on',
+            confirmationReference: String(values.confirmationReference || '').trim()
+          }
+        },
+        `${modalRecord.name} activated.`
+      );
+      if (saved) {
+        await loadCollegeChoices();
+        closeModal();
+      }
       return;
     }
     notify('This form is not available.');
@@ -611,6 +658,16 @@
       }, `${record.length} selected account(s) updated.`);
       if (saved) {
         selectedRows = selectedRows.filter(id => !record.includes(id));
+        closeModal();
+      }
+    } else if (type === 'college-deactivate') {
+      const saved = await mutatePortalData(
+        `/api/data/colleges/${encodeURIComponent(record.id)}/deactivate`,
+        { method: 'POST' },
+        `${record.name} deactivated. Existing teacher assignments were retained.`
+      );
+      if (saved) {
+        await loadCollegeChoices();
         closeModal();
       }
     } else if (type === 'registration-approve' || type === 'registration-reject') {
@@ -709,7 +766,9 @@
         body: {
           fullName: `${String(values.firstName).trim()} ${String(values.lastName).trim()}`.trim(),
           email,
-          department: String(values.department).trim(),
+          ...(isAdmin
+            ? { department: String(values.department).trim() }
+            : { collegeId: String(values.collegeId || '') }),
           photo: profilePhoto || ''
         }
       });
@@ -877,8 +936,16 @@
               </label>
               {#if authMode === 'signup'}
                 <label>College / Department
-                  <span class="auth-input-wrap"><Building2 size={16}/><select name="department" bind:value={signupDepartment} required><option value="" disabled>Select your college</option>{#each TEACHER_COLLEGES as college}<option value={college}>{college}</option>{/each}</select><ChevronDown size={15}/></span>
+                  <span class="auth-input-wrap"><Building2 size={16}/><select name="collegeId" bind:value={signupCollegeId} required disabled={collegeChoicesLoading || activeCollegeChoices.length === 0}><option value="" disabled>Select your college</option>{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select><ChevronDown size={15}/></span>
                 </label>
+                {#if collegeChoicesLoading}
+                  <p class="auth-helper" role="status">Loading verified college choices…</p>
+                {:else if collegeChoicesError}
+                  <p class="auth-error" role="alert">{collegeChoicesError}</p>
+                {:else if activeCollegeChoices.length === 0}
+                  <p class="auth-helper" role="status">Verified college choices are currently unavailable. Registration will open when an administrator confirms and activates a college.</p>
+                {/if}
+                <p class="auth-helper">Teacher access requires administrator approval before you can sign in.</p>
               {/if}
               <label>Password
                 <span class:password-visible={showPassword} class="auth-input-wrap"><Lock size={16}/><input type={showPassword ? 'text' : 'password'} autocomplete={authMode === 'login' ? 'current-password' : 'new-password'} name="password" placeholder={authMode === 'login' ? 'Enter your password' : 'At least 8 characters'} minlength="8" maxlength="128" value={authMode === 'login' ? loginPassword : signupPassword} oninput={updateAuthPassword} required/><button class="auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => showPassword = !showPassword}>{#if showPassword}<EyeOff size={16}/>{:else}<Eye size={16}/>{/if}</button></span>
@@ -893,7 +960,7 @@
               {/if}
               {#if authError}{#key authError}<p class="auth-error" role="alert">{authError}</p>{/key}{/if}
               {#if authInitError}<p class="auth-error" role="alert">{authInitError}</p>{/if}
-              <button class="auth-submit" type="submit" disabled={!authReady}>{authMode === 'login' ? 'Sign in to your account' : 'Request Teacher Access'} <ArrowRight size={17}/></button>
+              <button class="auth-submit" type="submit" disabled={!authReady || (authMode === 'signup' && (collegeChoicesLoading || activeCollegeChoices.length === 0 || !signupCollegeId))}>{authMode === 'login' ? 'Sign in to your account' : 'Request Teacher Access'} <ArrowRight size={17}/></button>
             </form>
           {/if}
         </div>
@@ -968,6 +1035,14 @@
 
       {:else if page === 'Teachers' && isAdmin}
         <PageTitle icon={Users} title="Teacher Accounts" subtitle="Review teacher access and manage account status." action="Add Teacher" onAction={() => openTeacherForm()}/>
+        <section class="panel">
+          <div class="panel-heading"><div><h3>College choices</h3><p>These provisional names and Guiuan Campus assignments are unverified. Activate only after confirming both.</p></div></div>
+          <div class="table-scroll"><table><thead><tr><th>Code</th><th>College</th><th>Status</th><th>Action</th></tr></thead><tbody>
+            {#each colleges as college}
+              <tr><td>{college.code}</td><td>{college.name}</td><td>{college.isActive ? 'Active' : 'Inactive'}</td><td>{#if college.isActive}<button class="outline-btn" onclick={() => askConfirmation('college-deactivate', college, 'Deactivate college', `Deactivate ${college.name}? Existing teacher assignments will be retained.`)}>Deactivate</button>{:else}<button class="primary tiny" onclick={() => openCollegeActivation(college)}>Confirm and activate</button>{/if}</td></tr>
+            {:else}<tr><td colspan="4" class="empty-table">No college records are available.</td></tr>{/each}
+          </tbody></table></div>
+        </section>
         <section class="panel table-panel">
           <div class="toolbar">
             <div class="search-field"><Search size={16}/><input id="page-search" bind:value={searchText} oninput={() => currentPage = 1} placeholder="Search name, email, or staff ID..."/></div>
@@ -990,7 +1065,7 @@
               <tr>
                 <td><input type="checkbox" checked={selectedRows.includes(t.id)} onchange={() => toggleRow(t.id)} aria-label={`Select ${t.name}`}/></td>
                 <td><button class="table-link" onclick={() => openTeacherDetails(t)}><div class="name-cell"><span class="initial-badge">{t.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><strong>{t.name}</strong></div></button></td>
-                <td>{t.id}</td><td>{t.department}</td><td>{t.email}</td><td><span class="role-pill">{t.role}</span></td>
+                <td>{t.id}</td><td>{t.collegeName || t.department}{#if t.collegeIsActive === false}<small>Inactive assignment</small>{/if}</td><td>{t.email}</td><td><span class="role-pill">{t.role}</span></td>
                 <td><span class={`status ${t.status === 'Approved' ? 'approved' : 'pending'}`}>{t.status}</span></td><td>{t.registered}</td><td>{t.last}</td>
                 <td><div class="row-actions">
                   <button class="icon-btn row-action" aria-label={`View ${t.name}`} onclick={() => openTeacherDetails(t)}><Eye size={16}/></button>
@@ -1013,7 +1088,7 @@
 
       {:else if page === 'Pending Approvals' && isAdmin}
         <PageTitle icon={Clock3} title="Pending Approvals" subtitle="Review sign-up requests before granting account access." action="Approve Selected" onAction={() => { const selected = registrations.filter(item => item.status === 'Pending' && selectedRows.includes(item.id)); if (selected.length !== 1) notify('Select one pending registration to approve.'); else startRegistrationDecision(selected[0], true); }}/>
-        <section class="panel approvals-panel"><div class="approval-heading"><div><h3>Teacher Registrations</h3><p>{pendingCount} registration(s) awaiting review</p></div><div class="approval-illustration"><ClipboardCheck size={78}/></div></div>{#if pendingCount}<div class="table-scroll"><table><thead><tr><th><input type="checkbox" checked={registrations.filter(r => r.status === 'Pending').length > 0 && registrations.filter(r => r.status === 'Pending').every(r => selectedRows.includes(r.id))} onchange={() => toggleAllRows(registrations.filter(r => r.status === 'Pending'))} aria-label="Select all pending registrations"/></th><th>Name</th><th>Email</th><th>Department</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>{#each registrations.filter(r => r.status === 'Pending') as registration}<tr><td><input type="checkbox" checked={selectedRows.includes(registration.id)} onchange={() => toggleRow(registration.id)} aria-label={`Select ${registration.name}`}/></td><td><button class="table-link" onclick={() => openRegistration(registration)}>{registration.name}</button></td><td>{registration.email}</td><td>{registration.department}</td><td>{registration.submitted}</td><td><button class="outline-btn" onclick={() => startRegistrationDecision(registration, true)}>Approve</button> <button class="outline-btn" onclick={() => startRegistrationDecision(registration, false)}>Reject</button></td></tr>{/each}</tbody></table></div>{:else}<div class="empty-success"><span><Check size={21}/></span><div><strong>All caught up!</strong><small>There are no pending teacher registrations.</small></div></div>{/if}<div class="panel-bottom-note">Showing {pendingCount} of {registrations.length} registrations</div></section>
+        <section class="panel approvals-panel"><div class="approval-heading"><div><h3>Teacher Registrations</h3><p>{pendingCount} registration(s) awaiting review</p></div><div class="approval-illustration"><ClipboardCheck size={78}/></div></div>{#if pendingCount}<div class="table-scroll"><table><thead><tr><th><input type="checkbox" checked={registrations.filter(r => r.status === 'Pending').length > 0 && registrations.filter(r => r.status === 'Pending').every(r => selectedRows.includes(r.id))} onchange={() => toggleAllRows(registrations.filter(r => r.status === 'Pending'))} aria-label="Select all pending registrations"/></th><th>Name</th><th>Email</th><th>College / Department</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>{#each registrations.filter(r => r.status === 'Pending') as registration}<tr><td><input type="checkbox" checked={selectedRows.includes(registration.id)} onchange={() => toggleRow(registration.id)} aria-label={`Select ${registration.name}`}/></td><td><button class="table-link" onclick={() => openRegistration(registration)}>{registration.name}</button></td><td>{registration.email}</td><td>{registration.collegeName || registration.department}{#if registration.collegeIsActive === false}<small>Inactive assignment</small>{/if}</td><td>{registration.submitted}</td><td><button class="outline-btn" onclick={() => startRegistrationDecision(registration, true)}>Approve</button> <button class="outline-btn" onclick={() => startRegistrationDecision(registration, false)}>Reject</button></td></tr>{/each}</tbody></table></div>{:else}<div class="empty-success"><span><Check size={21}/></span><div><strong>All caught up!</strong><small>There are no pending teacher registrations.</small></div></div>{/if}<div class="panel-bottom-note">Showing {pendingCount} of {registrations.length} registrations</div></section>
 
       {:else if page === 'Audit Log' && isAdmin}
         <PageTitle icon={FileText} title="Audit Log" subtitle="Administrative actions recorded by the system."/>
@@ -1065,7 +1140,7 @@
                   <div class="teacher-profile-divider"></div>
                   <div class="teacher-profile-details">
                     <div><span class="teacher-profile-detail-icon"><Mail size={16}/></span><span><small>Email address</small><strong>{userSettings.email}</strong></span></div>
-                    <div><span class="teacher-profile-detail-icon"><Building2 size={16}/></span><span><small>{isAdmin ? 'Department' : 'College / Department'}</small><strong>{userSettings.department || 'Not set'}</strong></span></div>
+                    <div><span class="teacher-profile-detail-icon"><Building2 size={16}/></span><span><small>{isAdmin ? 'Department' : 'College / Department'}</small><strong>{isAdmin ? userSettings.department || 'Not set' : userSettings.collegeName || userSettings.department || 'Not set'}{!isAdmin && userSettings.collegeIsActive === false ? ' (inactive assignment)' : ''}</strong></span></div>
                     <div><span class="teacher-profile-detail-icon"><GraduationCap size={16}/></span><span><small>Role</small><strong>{isAdmin ? 'System Admin' : 'Teacher'}</strong></span></div>
                   </div>
                   <button class="soft-btn teacher-change-photo" type="button" onclick={chooseProfilePhoto}><Camera size={15}/>Change Photo</button>
@@ -1083,7 +1158,8 @@
                     <label>First Name<span class="teacher-profile-field"><UserRound size={16}/><input name="firstName" value={userSettings.firstName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
                     <label>Last Name<span class="teacher-profile-field"><UserRound size={16}/><input name="lastName" value={userSettings.lastName} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
                     <label class="full">Email Address<span class="teacher-profile-field"><Mail size={16}/><input name="email" type="email" value={userSettings.email} required oninput={event => updateProfileEdited(event.currentTarget.form)}/></span></label>
-                    <label class="full">{isAdmin ? 'Department' : 'College / Department'}<span class="teacher-profile-field"><Building2 size={16}/>{#if isAdmin}<input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/>{:else}<select name="department" value={userSettings.department} required onchange={event => updateProfileEdited(event.currentTarget.form)}>{#if userSettings.department && !TEACHER_COLLEGES.includes(userSettings.department)}<option value={userSettings.department}>Existing value: {userSettings.department}</option>{/if}<option value="" disabled>Select your college</option>{#each TEACHER_COLLEGES as college}<option value={college}>{college}</option>{/each}</select>{/if}</span></label>
+                    <label class="full">{isAdmin ? 'Department' : 'College / Department'}<span class="teacher-profile-field"><Building2 size={16}/>{#if isAdmin}<input name="department" value={userSettings.department} required oninput={event => updateProfileEdited(event.currentTarget.form)}/>{:else}<select name="collegeId" value={userSettings.collegeId || ''} onchange={event => updateProfileEdited(event.currentTarget.form)}>{#if userSettings.collegeId && !activeCollegeChoices.some(college => college.id === userSettings.collegeId)}<option value={userSettings.collegeId}>{userSettings.collegeName || userSettings.department}{userSettings.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}{#if !userSettings.collegeId}<option value="" disabled>Select your college</option>{/if}{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select>{/if}</span></label>
+                    {#if !isAdmin && collegeChoicesError}<p class="auth-error" role="alert">{collegeChoicesError}</p>{/if}
                   </div>
                   <div class="form-actions"><button class="primary" type="submit"><Check size={16}/>Save Changes</button></div>
                 </form>
@@ -1300,11 +1376,12 @@
 
 {#if notice}<div class="toast"><CheckCircle2 size={17}/>{notice}</div>{/if}
 {#if showModal}<div class:admin-modal={isAdmin} class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeModal()}><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" tabindex="-1"><button class="icon-btn modal-close" aria-label="Close dialog" onclick={closeModal}><X size={18}/></button><div class="modal-symbol"><Users size={22}/></div><h2 id="modal-heading">{modalTitle}</h2>
-  {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>College / Department<select name="department" value={formValues.department} required>{#if formValues.department && !TEACHER_COLLEGES.includes(formValues.department)}<option value={formValues.department}>Existing value: {formValues.department}</option>{/if}<option value="" disabled>Select your college</option>{#each TEACHER_COLLEGES as college}<option value={college}>{college}</option>{/each}</select></label><label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
+  {#if modalMode === 'teacher-form'}<p>{modalRecord ? 'Update the teacher profile and access status.' : 'A secure password setup link will be sent to the teacher email.'}</p><form onsubmit={submitModalForm}><label>Full name<input name="name" value={formValues.name} required/></label><label>Staff ID<input name="id" inputmode="numeric" pattern="[0-9]+" value={formValues.id} required/></label><label>College / Department<select name="collegeId" value={formValues.collegeId || ''} required disabled={collegeChoicesLoading || (activeCollegeChoices.length === 0 && !formValues.collegeId)}>{#if formValues.collegeId && !activeCollegeChoices.some(college => college.id === formValues.collegeId)}<option value={formValues.collegeId}>{formValues.collegeName || formValues.department}{formValues.collegeIsActive === false ? ' (inactive — existing assignment)' : ' (current assignment)'}</option>{/if}<option value="" disabled>Select your college</option>{#each activeCollegeChoices as college}<option value={college.id}>{college.name}</option>{/each}</select></label>{#if collegeChoicesError}<p class="auth-error" role="alert">{collegeChoicesError}</p>{/if}<label>Email address<input name="email" type="email" value={formValues.email} required/></label><label>Account status<select name="status" value={formValues.status}><option>Approved</option><option>Pending</option></select></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Save Teacher</button></div></form>
+  {:else if modalMode === 'college-activate'}<p>These entries are provisional. Confirm the official name and Guiuan Campus assignment before activation; these attestations are not independent verification.</p><form onsubmit={submitModalForm}><label><input type="checkbox" name="officialNameConfirmed" required/> I confirm the official college name.</label><label><input type="checkbox" name="guiuanCampusAssignmentConfirmed" required/> I confirm this college is assigned to Guiuan Campus.</label><label>Confirmation reference<input name="confirmationReference" maxlength="500" required placeholder="Official source or confirmation reference"/></label><div class="modal-actions"><button class="outline-btn" type="button" onclick={closeModal}>Cancel</button><button class="primary" type="submit">Activate College</button></div></form>
   {:else if modalMode === 'confirm'}<p>{formValues.detail}</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Cancel</button><button class="primary danger-action" onclick={runConfirmation}>Confirm</button></div>
-  {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
+  {:else if modalMode === 'teacher-view'}<div class="record-details"><p><strong>Staff ID</strong><span>{modalRecord.id}</span></p><p><strong>College / Department</strong><span>{modalRecord.collegeName || modalRecord.department}{modalRecord.collegeIsActive === false ? ' (inactive assignment)' : ''}</span></p><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Role / Status</strong><span>{modalRecord.role} · {modalRecord.status}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="primary" onclick={() => openTeacherForm(modalRecord)}>Edit Teacher</button></div>
   {:else if modalMode === 'student-view'}<div class="record-details"><p><strong>Student ID</strong><span>{modalRecord.id}</span></p><p><strong>Program / Year</strong><span>{modalRecord.program} · {modalRecord.year}</span></p><p><strong>Enrollment</strong><span>{modalRecord.status}</span></p><p><strong>Class / Section</strong><span>{modalRecord.className || '—'} · {modalRecord.section || '—'}</span></p><p><strong>RFID</strong><span>{modalRecord.rfid || 'Not assigned'}</span></p><strong>Academic records</strong>{#each grades.filter(item => item.studentId === modalRecord.id) as grade}<p><span>{grade.period} · {grade.className}</span><span>{Math.round((grade.quizzes + grade.examinations + grade.activities + grade.assessments) / 4)}% average</span></p>{:else}<p>No academic records available.</p>{/each}<strong>Recent attendance</strong>{#each attendance.filter(item => item.id === modalRecord.id).slice(0, 5) as item}<p><span>{item.date}</span><span>{item.status} · {item.time}</span></p>{:else}<p>No attendance history.</p>{/each}</div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
-  {:else if modalMode === 'registration-view'}<div class="record-details"><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>Department</strong><span>{modalRecord.department}</span></p><p><strong>Submitted</strong><span>{modalRecord.submitted}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="outline-btn" onclick={() => startRegistrationDecision(modalRecord, false)}>Reject</button><button class="primary" onclick={() => startRegistrationDecision(modalRecord, true)}>Approve</button></div>
+  {:else if modalMode === 'registration-view'}<div class="record-details"><p><strong>Email</strong><span>{modalRecord.email}</span></p><p><strong>College / Department</strong><span>{modalRecord.collegeName || modalRecord.department}{modalRecord.collegeIsActive === false ? ' (inactive assignment)' : ''}</span></p><p><strong>Submitted</strong><span>{modalRecord.submitted}</span></p></div><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button><button class="outline-btn" onclick={() => startRegistrationDecision(modalRecord, false)}>Reject</button><button class="primary" onclick={() => startRegistrationDecision(modalRecord, true)}>Approve</button></div>
   {:else if modalMode === 'class-view'}{#if modalRecord}<div class="record-details"><p><strong>Course</strong><span>{modalRecord.course}</span></p><p><strong>Year level</strong><span>{modalRecord.year}</span></p><p><strong>Schedule</strong><span>{modalRecord.schedule}</span></p><strong>Sections</strong>{#each modalRecord.sectionNames as section}<p><span>{section}</span><span>{students.filter(student => student.className === modalRecord.name && student.section === section).length} students</span></p>{/each}</div>{:else}<p>No class details are available.</p>{/if}<div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>
   {:else}<p>No additional details are available for this record.</p><div class="modal-actions"><button class="outline-btn" onclick={closeModal}>Close</button></div>{/if}</div></div>{/if}
 

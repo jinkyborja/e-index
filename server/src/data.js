@@ -10,7 +10,12 @@ import {
 } from './brevo.js';
 import { asyncHandler, HttpError } from './errors.js';
 import { requireAuth, requireRole } from './auth.js';
-import { TEACHER_COLLEGES } from '../../shared/teacher-colleges.js';
+import {
+  collegeAssignmentFields,
+  collegeSelectionFields,
+  departmentValue,
+  resolveCollegeSelection
+} from './colleges.js';
 
 const roleName = role => role === 'ADMIN' ? 'admin' : 'teacher';
 const displayStatus = status => status.toLowerCase().replace(/^\w/, letter => letter.toUpperCase());
@@ -18,12 +23,11 @@ const formatDate = value => value ? new Date(value).toLocaleDateString('en-US', 
 const formatTime = value => value ? new Date(value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—';
 const attendanceStatus = status => displayStatus(status);
 const attendanceStatusValue = z.enum(['PRESENT', 'LATE', 'ABSENT', 'EXCUSED']);
-const collegeSchema = z.enum(TEACHER_COLLEGES, { errorMap: () => ({ message: 'Select a college / department.' }) });
 
 const profileSchema = z.object({
   fullName: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
-  department: z.string().trim().min(1, 'Select a college / department.').max(120),
+  ...collegeSelectionFields,
   photo: z.string().max(4_000_000).optional()
 });
 
@@ -81,7 +85,8 @@ function serializeTeacher(user) {
     id: user.staffId || user.id,
     accountId: user.id,
     name: user.fullName,
-    department: user.department,
+    department: departmentValue(user),
+    ...collegeAssignmentFields(user),
     email: user.email,
     role: 'Teacher',
     status: displayStatus(user.status),
@@ -114,12 +119,13 @@ export function createDataRouter(prisma, {
     };
     const auditFilter = admin ? {} : { actorId: req.user.id };
 
-    const [users, classes, students, attendance, grades, registrations, audit, notifications] = await Promise.all([
+    const [users, classes, students, attendance, grades, registrations, audit, notifications, colleges] = await Promise.all([
       prisma.user.findMany({
         where: teacherFilter,
         select: {
           id: true, staffId: true, fullName: true, email: true, department: true,
-          status: true, registeredAt: true, lastLoginAt: true
+          collegeId: true, organizationUnit: true, status: true, registeredAt: true, lastLoginAt: true,
+          college: { select: { id: true, code: true, name: true, isActive: true } }
         },
         orderBy: { registeredAt: 'desc' },
         take: 5000
@@ -153,7 +159,14 @@ export function createDataRouter(prisma, {
         take: 10000
       }),
       admin ? prisma.teacherRegistration.findMany({
-        include: { user: { select: { id: true, fullName: true, email: true, department: true } } },
+        include: {
+          user: {
+            select: {
+              id: true, fullName: true, email: true, department: true, collegeId: true,
+              college: { select: { id: true, code: true, name: true, isActive: true } }
+            }
+          }
+        },
         orderBy: { submittedAt: 'desc' },
         take: 5000
       }) : Promise.resolve([]),
@@ -167,7 +180,10 @@ export function createDataRouter(prisma, {
         where: { userId: req.user.id },
         orderBy: { createdAt: 'desc' },
         take: 100
-      })
+      }),
+      admin
+        ? prisma.college.findMany({ orderBy: { name: 'asc' } })
+        : Promise.resolve([])
     ]);
 
     const teacherName = req.user.fullName.split(/\s+/);
@@ -226,7 +242,8 @@ export function createDataRouter(prisma, {
         accountId: item.userId,
         name: item.user.fullName,
         email: item.user.email,
-        department: item.user.department,
+        department: departmentValue(item.user),
+        ...collegeAssignmentFields(item.user),
         submitted: formatDate(item.submittedAt),
         status: displayStatus(item.status)
       })),
@@ -247,12 +264,19 @@ export function createDataRouter(prisma, {
         role: roleName(req.user.role),
         time: item.createdAt.toISOString()
       })),
+      colleges: colleges.map(college => ({
+        id: college.id,
+        code: college.code,
+        name: college.name,
+        isActive: college.isActive
+      })),
       settings: {
         [settingsKey]: {
           firstName: teacherName[0] || '',
           lastName: teacherName.slice(1).join(' '),
           email: req.user.email,
-          department: req.user.department,
+          department: departmentValue(req.user),
+          ...collegeAssignmentFields(req.user),
           photo: req.user.photo || '',
           notifications: req.user.notificationPreferences || { updates: true, attendance: true, announcements: true },
           appearance: req.user.appearance || 'Light'
@@ -265,19 +289,84 @@ export function createDataRouter(prisma, {
 
   router.patch('/profile', asyncHandler(async (req, res) => {
     const input = profileSchema.parse(req.body);
+    const data = {
+      fullName: input.fullName,
+      email: input.email,
+      ...(input.photo !== undefined ? { photo: input.photo } : {})
+    };
     if (req.user.role === 'TEACHER'
-      && input.department !== req.user.department
-      && !TEACHER_COLLEGES.includes(input.department)) {
-      throw new HttpError(400, 'INVALID_COLLEGE', 'Select a college / department from the list.');
+      && (input.collegeId !== undefined || input.department !== undefined)) {
+      const college = await resolveCollegeSelection(prisma, input, {
+        existingCollegeId: req.user.collegeId,
+        existingDepartment: req.user.department
+      });
+      data.collegeId = college.id;
+      if (college.id !== req.user.collegeId || !req.user.department) data.department = college.name;
+    } else if (req.user.role === 'ADMIN' && input.department !== undefined) {
+      data.department = input.department;
+      data.organizationUnit = input.department;
     }
     const updated = await prisma.user.update({
       where: { id: req.user.id },
-      data: { fullName: input.fullName, email: input.email, department: input.department, ...(input.photo !== undefined ? { photo: input.photo } : {}) }
+      data,
+      include: { college: true }
     });
     await prisma.auditLog.create({
       data: auditData(updated, 'UPDATE', 'Updated account profile', updated.email)
     });
-    res.json({ user: { id: updated.id, fullName: updated.fullName, name: updated.fullName, email: updated.email, department: updated.department, photo: updated.photo } });
+    res.json({
+      user: {
+        id: updated.id,
+        fullName: updated.fullName,
+        name: updated.fullName,
+        email: updated.email,
+        department: departmentValue(updated),
+        ...collegeAssignmentFields(updated),
+        photo: updated.photo
+      }
+    });
+  }));
+
+  router.post('/colleges/:id/activate', requireRole('ADMIN'), asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const input = z.object({
+      officialNameConfirmed: z.literal(true),
+      guiuanCampusAssignmentConfirmed: z.literal(true),
+      confirmationReference: z.string().trim().min(1).max(500)
+    }).parse(req.body);
+
+    const college = await prisma.$transaction(async tx => {
+      const existing = await tx.college.findUnique({ where: { id } });
+      if (!existing) throw new HttpError(404, 'NOT_FOUND', 'The college was not found.');
+      if (existing.isActive) throw new HttpError(409, 'ALREADY_ACTIVE', 'This college is already active.');
+      const activated = await tx.college.update({ where: { id }, data: { isActive: true } });
+      await tx.auditLog.create({
+        data: auditData(
+          req.user,
+          'COLLEGE_ACTIVATED',
+          `Activated ${existing.code} after confirmation: ${input.confirmationReference}`,
+          existing.name
+        )
+      });
+      return activated;
+    });
+
+    res.json({ college });
+  }));
+
+  router.post('/colleges/:id/deactivate', requireRole('ADMIN'), asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const college = await prisma.$transaction(async tx => {
+      const existing = await tx.college.findUnique({ where: { id } });
+      if (!existing) throw new HttpError(404, 'NOT_FOUND', 'The college was not found.');
+      const deactivated = await tx.college.update({ where: { id }, data: { isActive: false } });
+      await tx.auditLog.create({
+        data: auditData(req.user, 'COLLEGE_DEACTIVATED', `Deactivated ${existing.code}`, existing.name)
+      });
+      return deactivated;
+    });
+
+    res.json({ college });
   }));
 
   router.patch('/preferences', asyncHandler(async (req, res) => {
@@ -310,9 +399,12 @@ export function createDataRouter(prisma, {
     const input = z.object({
       fullName: z.string().trim().min(1).max(120),
       email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
-      department: collegeSchema,
+      ...collegeSelectionFields,
       staffId: z.string().trim().regex(/^\d{1,32}$/),
       status: z.enum(['APPROVED', 'PENDING'])
+    }).refine(value => Boolean(value.collegeId || value.department), {
+      path: ['collegeId'],
+      message: 'Select a college / department.'
     }).parse(req.body);
     const temporaryPassword = randomBytes(32).toString('base64url');
     const passwordHash = await bcrypt.hash(temporaryPassword, 12);
@@ -327,18 +419,21 @@ export function createDataRouter(prisma, {
     resetUrl.searchParams.set('token', resetToken);
 
     const created = await prisma.$transaction(async tx => {
+      const college = await resolveCollegeSelection(tx, input);
       const user = await tx.user.create({
         data: {
           email: input.email,
           passwordHash,
           fullName: input.fullName,
-          department: input.department,
+          department: college.name,
+          collegeId: college.id,
           staffId: input.staffId,
           role: 'TEACHER',
           status: input.status,
           photo: '',
           notificationPreferences: { updates: true, attendance: true, announcements: true }
-        }
+        },
+        include: { college: true }
       });
       if (input.status === 'APPROVED') {
         await tx.passwordResetToken.create({
@@ -372,7 +467,7 @@ export function createDataRouter(prisma, {
     const input = z.object({
       fullName: z.string().trim().min(1).max(120),
       email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
-      department: z.string().trim().min(1).max(120),
+      ...collegeSelectionFields,
       staffId: z.string().trim().regex(/^\d{1,32}$/),
       status: z.enum(['APPROVED', 'PENDING', 'REJECTED', 'INACTIVE'])
     }).parse(req.body);
@@ -380,13 +475,26 @@ export function createDataRouter(prisma, {
       where: { role: 'TEACHER', OR: [{ id: req.params.identifier }, { staffId: req.params.identifier }] }
     });
     if (!teacher) throw new HttpError(404, 'NOT_FOUND', 'The teacher account was not found.');
-    if (input.department !== teacher.department && !TEACHER_COLLEGES.includes(input.department)) {
-      throw new HttpError(400, 'INVALID_COLLEGE', 'Select a college / department from the list.');
-    }
     const updated = await prisma.$transaction(async tx => {
+      const college = input.collegeId !== undefined || input.department !== undefined
+        ? await resolveCollegeSelection(tx, input, {
+          existingCollegeId: teacher.collegeId,
+          existingDepartment: teacher.department
+        })
+        : null;
       const account = await tx.user.update({
         where: { id: teacher.id },
-        data: { fullName: input.fullName, email: input.email, department: input.department, staffId: input.staffId, status: input.status }
+        data: {
+          fullName: input.fullName,
+          email: input.email,
+          ...(college ? {
+            collegeId: college.id,
+            ...(college.id !== teacher.collegeId || !teacher.department ? { department: college.name } : {})
+          } : {}),
+          staffId: input.staffId,
+          status: input.status
+        },
+        include: { college: true }
       });
       await syncPendingRegistration(tx, account.id, input.status);
       await tx.auditLog.create({

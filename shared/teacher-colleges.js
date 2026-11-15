@@ -1,11 +1,12 @@
+// Provisional choices only; they remain unavailable until an administrator confirms them.
 export const TEACHER_COLLEGES = Object.freeze([
-  'College of Arts and Sciences (CAS)',
-  'College of Business Management and Accountancy (CBMA)',
-  'College of Computer Studies (CCS)',
-  'College of Criminal Justice Education (CCJE)',
-  'College of Education (COED)',
-  'College of Engineering (COE)',
-  'College of Hospitality Management (CHM)',
-  'College of Nursing (CON)',
-  'College of Technology (COT)'
+  Object.freeze({ code: 'CAS', name: 'College of Arts and Sciences (CAS)' }),
+  Object.freeze({ code: 'CBMA', name: 'College of Business Management and Accountancy (CBMA)' }),
+  Object.freeze({ code: 'CCS', name: 'College of Computer Studies (CCS)' }),
+  Object.freeze({ code: 'CCJE', name: 'College of Criminal Justice Education (CCJE)' }),
+  Object.freeze({ code: 'COED', name: 'College of Education (COED)' }),
+  Object.freeze({ code: 'COE', name: 'College of Engineering (COE)' }),
+  Object.freeze({ code: 'CHM', name: 'College of Hospitality Management (CHM)' }),
+  Object.freeze({ code: 'CON', name: 'College of Nursing (CON)' }),
+  Object.freeze({ code: 'COT', name: 'College of Technology (COT)' })
 ]);

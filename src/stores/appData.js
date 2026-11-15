@@ -7,6 +7,7 @@ const emptyData = () => ({
   attendance: [],
   grades: [],
   registrations: [],
+  colleges: [],
   audit: [],
   notifications: [],
   settings: {}

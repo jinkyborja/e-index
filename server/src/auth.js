@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { env } from './env.js';
 import { EmailDeliveryError, sendPasswordResetEmail } from './brevo.js';
 import { asyncHandler, HttpError } from './errors.js';
-import { TEACHER_COLLEGES } from '../../shared/teacher-colleges.js';
+import { collegeAssignmentFields, collegeSelectionFields, departmentValue, resolveCollegeSelection } from './colleges.js';
 
 export const SESSION_COOKIE = 'eindex.sid';
 const PASSWORD_ROUNDS = 12;
@@ -22,13 +22,18 @@ const loginSchema = z.object({
 const registrationSchema = z.object({
   name: z.string().trim().min(1, 'Enter your full name.').max(120, 'Full name must be 120 characters or fewer.'),
   email: z.string().trim().email('Enter a valid school email address.').max(254, 'Email must be 254 characters or fewer.').transform(value => value.toLowerCase()),
-  department: z.enum(TEACHER_COLLEGES, { errorMap: () => ({ message: 'Select a college / department.' }) }),
+  ...collegeSelectionFields,
   password: z.string().min(8, 'Password must be at least 8 characters.').max(128, 'Password must be 128 characters or fewer.'),
   confirmPassword: z.string().min(8, 'Confirm your password.').max(128, 'Password must be 128 characters or fewer.')
-}).refine(input => input.password === input.confirmPassword, {
-  path: ['confirmPassword'],
-  message: 'The passwords do not match.'
-});
+})
+  .refine(input => Boolean(input.collegeId || input.department), {
+    path: ['collegeId'],
+    message: 'Select a college / department.'
+  })
+  .refine(input => input.password === input.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'The passwords do not match.'
+  });
 
 const forgotPasswordSchema = z.object({
   email: z.string().trim().email().transform(value => value.toLowerCase())
@@ -71,7 +76,8 @@ export function serializeUser(user) {
     email: user.email,
     role: user.role.toLowerCase(),
     status: user.status,
-    department: user.department,
+    department: departmentValue(user),
+    ...collegeAssignmentFields(user),
     teacherId: user.staffId || null,
     photo: user.photo,
     notificationPreferences: user.notificationPreferences,
@@ -89,7 +95,7 @@ export function createSessionMiddleware(prisma, { production = env.NODE_ENV === 
 
     const session = await prisma.session.findUnique({
       where: { tokenHash: hashToken(token) },
-      include: { user: true }
+      include: { user: { include: { college: true } } }
     });
     if (!session || session.expiresAt <= new Date() || session.user.status !== 'APPROVED') {
       if (session) await prisma.session.delete({ where: { id: session.id } });
@@ -140,6 +146,15 @@ export function createAuthRouter(prisma, {
     message: { error: { code: 'RATE_LIMITED', message: 'Too many password reset requests. Try again later.' } }
   });
 
+  router.get('/colleges', asyncHandler(async (_req, res) => {
+    const colleges = await prisma.college.findMany({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: 'asc' }
+    });
+    res.json(colleges.map(({ id, code, name }) => ({ id, code, name })));
+  }));
+
   router.post('/register', loginLimiter, asyncHandler(async (req, res) => {
     const input = registrationSchema.parse(req.body);
     const passwordHash = await bcrypt.hash(input.password, PASSWORD_ROUNDS);
@@ -148,13 +163,15 @@ export function createAuthRouter(prisma, {
       result = await prisma.$transaction(async tx => {
         const existing = await tx.user.findUnique({ where: { email: input.email }, select: { id: true } });
         if (existing) throw new HttpError(409, 'EMAIL_IN_USE', 'An account or registration with this email already exists.');
+        const college = await resolveCollegeSelection(tx, input);
 
         const user = await tx.user.create({
           data: {
             email: input.email,
             passwordHash,
             fullName: input.name,
-            department: input.department,
+            department: college.name,
+            collegeId: college.id,
             role: 'TEACHER',
             status: 'PENDING',
             notificationPreferences: { updates: true, attendance: true, announcements: true }
@@ -196,7 +213,10 @@ export function createAuthRouter(prisma, {
 
   router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
     const input = loginSchema.parse(req.body);
-    const user = await prisma.user.findUnique({ where: { email: input.email } });
+    const user = await prisma.user.findUnique({
+      where: { email: input.email },
+      include: { college: true }
+    });
     const passwordMatches = await bcrypt.compare(input.password, user?.passwordHash || DUMMY_PASSWORD_HASH);
     if (!user || !passwordMatches) {
       throw new HttpError(401, 'INVALID_CREDENTIALS', 'The email or password is incorrect.');

@@ -116,7 +116,14 @@ test('login creates an HttpOnly cookie and /me returns only safe account data', 
   const app = appFor({
     id: 'teacher-1', email: 'teacher@example.test', passwordHash,
     fullName: 'Test Teacher', role: 'TEACHER', status: 'APPROVED',
-    department: 'Education', staffId: '234566'
+    department: 'Computer Studies', collegeId: '00000000-0000-4000-8000-000000000003',
+    college: {
+      id: '00000000-0000-4000-8000-000000000003',
+      code: 'CCS',
+      name: 'College of Computer Studies (CCS)',
+      isActive: false
+    },
+    staffId: '234566'
   });
   const agent = request.agent(app);
 
@@ -127,12 +134,19 @@ test('login creates an HttpOnly cookie and /me returns only safe account data', 
   assert.equal(login.body.user.email, 'teacher@example.test');
   assert.equal(login.body.user.role, 'teacher');
   assert.equal(login.body.user.passwordHash, undefined);
+  assert.equal(login.body.user.department, 'Computer Studies');
+  assert.equal(login.body.user.collegeId, '00000000-0000-4000-8000-000000000003');
+  assert.equal(login.body.user.collegeName, 'College of Computer Studies (CCS)');
+  assert.equal(login.body.user.collegeIsActive, false);
   assert.match(login.headers['set-cookie'][0], /HttpOnly/i);
   assert.match(login.headers['set-cookie'][0], /SameSite=Strict/i);
 
   const me = await agent.get('/api/auth/me');
   assert.equal(me.status, 200);
   assert.equal(me.body.user.fullName, 'Test Teacher');
+  assert.equal(me.body.user.department, 'Computer Studies');
+  assert.equal(me.body.user.collegeId, '00000000-0000-4000-8000-000000000003');
+  assert.equal(me.body.user.collegeIsActive, false);
 });
 
 test('login without a selected portal uses the account role', async () => {
