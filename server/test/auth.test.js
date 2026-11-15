@@ -59,6 +59,16 @@ test('health endpoint is available without a database session', async () => {
   assert.deepEqual(response.body, { status: 'ok', database: 'connected' });
 });
 
+test('local loopback Vite origin is allowed in development', async () => {
+  const app = createApp({ prisma: fakePrisma({}), production: false });
+  const response = await request(app)
+    .get('/api/health')
+    .set('Origin', 'http://127.0.0.1:5173');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['access-control-allow-origin'], 'http://127.0.0.1:5173');
+});
+
 test('login creates an HttpOnly cookie and /me returns only safe account data', async () => {
   const app = appFor({
     id: 'teacher-1', email: 'teacher@example.test', passwordHash,

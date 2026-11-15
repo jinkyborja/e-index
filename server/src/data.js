@@ -300,7 +300,7 @@ export function createDataRouter(prisma) {
     const sameOrigin = requestOrigin === `${req.protocol}://${req.get('host')}`;
     const baseOrigin = requestOrigin && (env.allowedOrigins.includes(requestOrigin) || sameOrigin)
       ? requestOrigin
-      : env.allowedOrigins[0];
+      : env.FRONTEND_URL || env.allowedOrigins[0];
     const resetUrl = new URL('/reset-password', `${baseOrigin}/`);
     resetUrl.searchParams.set('token', resetToken);
 

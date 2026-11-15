@@ -14,7 +14,7 @@ The backend reads process environment variables and the existing project-root `.
 
 The API uses `DATABASE_URL` when configured. Otherwise, it builds the Prisma URL in memory from `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and the optional `DB_SSL` / `DB_SSL_REJECT_UNAUTHORIZED` flags. Prisma CLI commands use that same configuration.
 
-Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. Set `FRONTEND_ORIGINS` to the deployed app origin(s) so emailed reset links point to the correct site. Secrets must remain in backend environment configuration, never frontend code.
+Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. The backend reads the existing `CORS_ORIGINS` setting (comma-separated) for allowed app origins; `FRONTEND_ORIGINS` is supported as a fallback. Include the exact dev origin you browse from (for example, `http://192.168.1.12:5173`) and the deployed app origin(s). `FRONTEND_URL` supplies the fallback origin for password-reset links. Keep secrets in backend environment configuration, never frontend code.
 
 The currently configured Aiven database is MySQL 8.4.8. The existing `eindex_*` application tables were found during read-only inspection and contained no user, teacher, student, class, attendance, grade, notification, or audit records at that time. The app does not seed or reset records. Provision real accounts and academic records through HeidiSQL.
 
@@ -38,7 +38,7 @@ npm run dev:server
 npm run dev
 ```
 
-Run the API and Vite frontend in separate terminals. Vite proxies `/api` requests to `http://localhost:3001`. The `/api/health` endpoint checks the live database connection.
+Run the API and Vite frontend in separate terminals. Vite proxies `/api` requests to the backend port configured by `PORT` in the existing environment files (default `3001`). The `/api/health` endpoint checks the live database connection.
 
 For production, configure the same DB and Brevo variables in the hosting provider's secret environment settings. Render serves the built `dist/` app and API from one origin; its health check is `/api/health`. Restrict Aiven inbound access to the application host rather than opening MySQL publicly.
 
