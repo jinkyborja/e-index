@@ -925,7 +925,7 @@
               <button class="auth-text-button" type="button" onclick={() => { resetPasswordMode = false; navigate('/login', { replace: true }); }}>Back to sign in</button>
             </form>
           {:else}
-            <form class:signup-form={authMode === 'signup'} class="auth-form" onsubmit={handleTeacherAuth}>
+            <form class="auth-form" onsubmit={handleTeacherAuth}>
               {#if authMode === 'signup'}
                 <label>Full Name
                   <span class="auth-input-wrap"><UserRound size={16}/><input autocomplete="name" name="name" maxlength="120" placeholder="Enter your full name" bind:value={signupName} required/></span>
