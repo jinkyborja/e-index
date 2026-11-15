@@ -327,25 +327,6 @@
     go(isAdmin ? 'Teachers' : 'Students');
     setTimeout(() => document.getElementById('page-search')?.focus(), 0);
   }
-  async function switchPortal(value) {
-    try {
-      if (currentUser) await signOut();
-    } catch (error) {
-      notify(error.message);
-      return;
-    }
-    clearAppData();
-    portal = 'auth';
-    teacherAuthenticated = false;
-    authRole = value;
-    rememberMe = false;
-    authError = '';
-    setAuthMode('login');
-    page = 'Dashboard';
-    searchText = '';
-    sidebarOpen = false;
-    navigate('/login', { replace: true });
-  }
   function applyAuthMode(value) {
     authMode = value;
     forgotPasswordMode = false;
@@ -825,10 +806,10 @@
   <main class="auth-page">
     <div class="auth-shell">
     <section class="auth-story">
-      <button class="auth-brand" onclick={() => switchPortal('admin')} aria-label="Return to administration dashboard">
+      <div class="auth-brand" aria-label="E-Index Academic Portal">
         <span class="auth-brand-mark">E</span>
         <span><strong>E-Index</strong><small>ACADEMIC PORTAL</small></span>
-      </button>
+      </div>
       <div class="auth-story-content">
         <span class="auth-eyebrow"><span></span> YOUR ACADEMIC WORKSPACE</span>
         <h1><span>Make every</span><br/><span>school day <em>count.</em></span></h1>
@@ -854,7 +835,11 @@
             <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
           </div>
           {#if !forgotPasswordMode && !resetPasswordMode}
-            <div class="auth-tabs" role="tablist" aria-label="Teacher account access">
+            <div class="auth-role-tabs" role="tablist" aria-label="Choose a portal">
+              <button type="button" class:auth-role-active={authRole === 'teacher'} role="tab" aria-selected={authRole === 'teacher'} onclick={() => setAuthRole('teacher')}>Teacher Portal</button>
+              <button type="button" class:auth-role-active={authRole === 'admin'} role="tab" aria-selected={authRole === 'admin'} onclick={() => setAuthRole('admin')}>Administration Portal</button>
+            </div>
+            <div class:auth-tabs-single={authRole === 'admin'} class="auth-tabs" role="tablist" aria-label="Account access">
               <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
               {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
             </div>
