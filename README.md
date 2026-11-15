@@ -12,7 +12,23 @@ A Svelte + Vite frontend and Express/Prisma API for the E-Index Administration a
 
 The backend reads process environment variables and the existing project-root `.env` and `src/.env` files; it does not print their contents. Keep the existing credentials in place—do not copy or replace them.
 
-The API uses `DATABASE_URL` when configured. Otherwise, it builds the Prisma URL in memory from `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and the optional `DB_SSL` / `DB_SSL_REJECT_UNAUTHORIZED` flags. Prisma CLI commands use that same configuration.
+The API uses `DATABASE_URL` when configured. Otherwise, it builds the Prisma URL in memory from `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`. For Aiven, set `DB_SSL=true`; `DB_SSL_REJECT_UNAUTHORIZED=true` verifies the server certificate (recommended). `DB_CONNECT_TIMEOUT_MS` configures the Prisma connection timeout in milliseconds (default `10000`, accepted range `1000`–`120000`). These settings also apply when the API builds the URL from the split `DB_*` values. Prisma CLI commands use the same connection configuration.
+
+### Environment variable checklist
+
+| Variable(s) | Required | Used for |
+| --- | --- | --- |
+| `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | One complete database configuration is required | MySQL connection; `DATABASE_URL` takes precedence |
+| `JWT_SECRET` | Required at startup (minimum 32 characters) | Validated as requested; current authentication uses database-backed sessions and does not use JWT signing |
+| `DB_SSL`, `DB_SSL_REJECT_UNAUTHORIZED`, `DB_CONNECT_TIMEOUT_MS` | Optional; defaults apply | MySQL TLS and connect timeout |
+| `NODE_ENV`, `PORT` | Optional; defaults apply | Runtime mode and HTTP listener |
+| `CORS_ORIGINS` or `FRONTEND_ORIGINS` | Optional; defaults apply | API origin allowlist; `CORS_ORIGINS` takes precedence |
+| `FRONTEND_URL` | Optional | Fallback host for password-reset links |
+| `SESSION_TTL_DAYS`, `REMEMBER_SESSION_TTL_DAYS` | Optional; defaults apply | Server-side session lifetime |
+| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` | Required only to send password-reset emails | Brevo transactional email |
+| `BREVO_SENDER_NAME` | Optional; defaults to `E-Index` | Brevo sender display name |
+
+At startup, the API reports missing or invalid variable **names only**, then exits if required configuration is absent. `/api/health` returns `200` with `{ "ok": true, "db": true }` when MySQL responds, or `503` with `{ "ok": false, "db": false, "reason": "<safe-code>" }` when it does not. The server logs a sanitized database error code and message, without connection credentials, host, or stack trace.
 
 Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. The backend reads the existing `CORS_ORIGINS` setting (comma-separated) for allowed app origins; `FRONTEND_ORIGINS` is supported as a fallback. Include the exact dev origin you browse from (for example, `http://192.168.1.12:5173`) and the deployed app origin(s). `FRONTEND_URL` supplies the fallback origin for password-reset links. Keep secrets in backend environment configuration, never frontend code.
 

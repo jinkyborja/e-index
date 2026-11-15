@@ -5,8 +5,10 @@ import request from 'supertest';
 
 process.env.DATABASE_URL ||= 'mysql://test:test@localhost:3306/eindex_test';
 process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET ||= 'test-only-jwt-secret-with-at-least-32-characters';
 
-const { createApp } = await import('../src/app.js');
+const { createApp, databaseFailureReason } = await import('../src/app.js');
+const { missingRequiredEnvironment } = await import('../src/env.js');
 const passwordHash = await bcrypt.hash('Teacher123!', 4);
 
 function fakePrisma(account) {
@@ -56,7 +58,48 @@ function appFor(account) {
 test('health endpoint is available without a database session', async () => {
   const response = await request(appFor({})).get('/api/health');
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body, { status: 'ok', database: 'connected' });
+  assert.deepEqual(response.body, { ok: true, db: true });
+});
+
+test('health endpoint returns a safe database failure response and logs sanitized details', async () => {
+  const failure = Object.assign(
+    new Error('Can’t reach database server at `private.aiven.example:19115` using mysql://dbuser:dbpassword@private.aiven.example/defaultdb'),
+    { code: 'P1001' }
+  );
+  const logs = [];
+  const originalError = console.error;
+  console.error = (...args) => logs.push(args.join(' '));
+  try {
+    const response = await request(createApp({
+      prisma: { $queryRaw: async () => { throw failure; } },
+      production: false
+    })).get('/api/health');
+    assert.equal(response.status, 503);
+    assert.deepEqual(response.body, { ok: false, db: false, reason: 'connection_refused' });
+    assert.equal(databaseFailureReason(failure), 'connection_refused');
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /P1001/);
+    assert.doesNotMatch(logs[0], /private\.aiven\.example|dbpassword|dbuser|mysql:\/\//);
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test('database failure reasons use safe short codes', () => {
+  assert.equal(databaseFailureReason({ code: 'P1000' }), 'access_denied');
+  assert.equal(databaseFailureReason({ code: 'ETIMEDOUT' }), 'timeout');
+  assert.equal(databaseFailureReason({ code: 'P1011' }), 'ssl_error');
+  assert.equal(databaseFailureReason({ code: 'MISSING_ENV' }), 'missing_env');
+  assert.equal(databaseFailureReason({ code: 'unrecognized' }), 'unknown');
+});
+
+test('startup validation reports only missing environment variable names', () => {
+  assert.deepEqual(missingRequiredEnvironment({}), [
+    'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET'
+  ]);
+  assert.deepEqual(missingRequiredEnvironment({
+    DATABASE_URL: 'mysql://dbuser:dbpassword@db.example.test/eindex'
+  }), ['JWT_SECRET']);
 });
 
 test('local loopback Vite origin is allowed in development', async () => {

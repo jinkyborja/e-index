@@ -14,10 +14,20 @@ function booleanEnvironment(defaultValue) {
   ).transform(value => value === 'true');
 }
 
+export function missingRequiredEnvironment(source) {
+  const missing = [];
+  if (!source.DATABASE_URL?.trim()) {
+    missing.push(...['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
+      .filter(name => !String(source[name] ?? '').trim()));
+  }
+  if (!String(source.JWT_SECRET ?? '').trim()) missing.push('JWT_SECRET');
+  return missing;
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-  DATABASE_URL: z.string().min(1).optional(),
+  DATABASE_URL: z.string().url().refine(value => new URL(value).protocol === 'mysql:').optional(),
   DB_HOST: z.string().min(1).optional(),
   DB_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   DB_USER: z.string().min(1).optional(),
@@ -25,6 +35,8 @@ const envSchema = z.object({
   DB_NAME: z.string().min(1).optional(),
   DB_SSL: booleanEnvironment(false),
   DB_SSL_REJECT_UNAUTHORIZED: booleanEnvironment(true),
+  DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10000),
+  JWT_SECRET: z.string().min(32).optional(),
   BREVO_API_KEY: z.string().min(1).optional(),
   BREVO_SENDER_EMAIL: z.string().email().optional(),
   BREVO_SENDER_NAME: z.string().min(1).default('E-Index'),
@@ -37,7 +49,15 @@ const envSchema = z.object({
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
-  throw new Error(`Invalid server environment: ${parsed.error.issues.map(issue => issue.message).join('; ')}`);
+  const invalidNames = [...new Set(parsed.error.issues.map(issue => issue.path[0]).filter(Boolean))];
+  console.error(`Invalid environment variables: ${invalidNames.join(', ') || 'unknown'}`);
+  throw new Error('Invalid server environment configuration.');
+}
+
+const missingNames = missingRequiredEnvironment(parsed.data);
+if (missingNames.length) {
+  console.error(`Missing required environment variables: ${missingNames.join(', ')}`);
+  throw new Error('Required server environment configuration is missing.');
 }
 
 const configuredOrigins = parsed.data.CORS_ORIGINS

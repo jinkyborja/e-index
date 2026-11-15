@@ -3,7 +3,7 @@ services:
     name: e-index
     runtime: node
     buildCommand: npm install && npm run build
-    startCommand: npm run start:server
+    startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
