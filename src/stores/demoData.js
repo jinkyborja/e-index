@@ -255,14 +255,14 @@ function makeGrades(students) {
 
 function makeAudit() {
   const entries = [
-    ['REGISTRATION', 'Registration approved', 'Approved a pending teacher access request.', 'Ana Reyes', 'Demo Administrator'],
+    ['REGISTRATION', 'Registration reviewed', 'Reviewed a teacher access request.', 'Sofia Mendoza', 'Demo Administrator'],
     ['COLLEGE', 'College activated', 'Confirmed a college choice for demonstration.', 'College of Computer Studies (CCS)', 'Demo Administrator'],
     ['ACCOUNT', 'Teacher status changed', 'Updated a teacher account status.', 'Demo staff ID 950004', 'Demo Administrator'],
-    ['ATTENDANCE', 'Attendance recorded', 'Recorded class attendance.', 'Computer Programming 101 · BSCS Section A', 'Demo Teacher'],
-    ['GRADE', 'Grades updated', 'Updated midterm grading records.', 'Database Systems · BSCS Section A', 'Demo Teacher'],
+    ['ATTENDANCE', 'Attendance recorded', 'Recorded class attendance.', 'Computer Programming 101 · BSCS Section A', 'Maria Santos'],
+    ['GRADE', 'Grades updated', 'Updated midterm grading records.', 'Database Systems · BSCS Section A', 'Maria Santos'],
     ['PROFILE', 'Profile updated', 'Updated account profile details.', 'Demo administrator profile', 'Demo Administrator'],
     ['REGISTRATION', 'Registration reviewed', 'Reviewed a teacher access request.', 'Paolo Lim', 'Demo Administrator'],
-    ['ATTENDANCE', 'Attendance reviewed', 'Reviewed attendance entries.', 'Web Development · BSCS Section B', 'Demo Teacher']
+    ['ATTENDANCE', 'Attendance reviewed', 'Reviewed attendance entries.', 'Web Development · BSCS Section B', 'Maria Santos']
   ];
   return entries.map(([type, action, detail, target, actor], index) => ({
     id: `DEMO-AUDIT-${index + 1}`,
@@ -363,9 +363,9 @@ export function createDemoData(role) {
       appearance: 'Light'
     },
     'teacher:demo': {
-      firstName: 'Demo',
-      lastName: 'Teacher',
-      email: 'demo.teacher@example.invalid',
+      firstName: 'Maria',
+      lastName: 'Santos',
+      email: 'maria.santos@example.invalid',
       department: 'College of Computer Studies (CCS)',
       collegeId: 'DEMO-COLLEGE-CCS',
       collegeName: 'College of Computer Studies (CCS)',
@@ -396,6 +396,10 @@ export function createDemoData(role) {
 
 export function isDemoModeActive() {
   return activeRole() !== null;
+}
+
+export function getDemoModeRole() {
+  return activeRole();
 }
 
 export function activateDemoMode(role, reset = false) {
@@ -434,7 +438,7 @@ function addAudit(data, role, action, detail, target) {
     action,
     detail,
     target,
-    actor: role === 'admin' ? 'Demo Administrator' : 'Demo Teacher',
+    actor: role === 'admin' ? 'Demo Administrator' : 'Maria Santos',
     time: new Date().toISOString(),
     demoRecord: true
   });

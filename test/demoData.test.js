@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   activateDemoMode, createDemoData, deactivateDemoMode, DEMO_API_UNHANDLED,
-  handleDemoApiRequest
+  getDemoModeRole, handleDemoApiRequest
 } from '../src/stores/demoData.js';
 import { apiRequest } from '../src/utils/api.js';
 
@@ -94,6 +94,7 @@ test('demo API edits remain in browser storage and exiting preserves unrelated l
 
   try {
     activateDemoMode('admin');
+    assert.equal(getDemoModeRole(), 'admin');
     const data = await apiRequest('/api/data');
     assert.equal(data.isDemoData, true);
     assert.equal(data.teachers.length, 25);
@@ -140,6 +141,7 @@ test('demo API edits remain in browser storage and exiting preserves unrelated l
     assert.equal(handleDemoApiRequest('/api/auth/login', { method: 'POST' }), DEMO_API_UNHANDLED);
 
     deactivateDemoMode();
+    assert.equal(getDemoModeRole(), null);
     assert.deepEqual(storage.keys(), ['unrelated-app-setting']);
     assert.equal(storage.getItem('unrelated-app-setting'), 'preserve-me');
   } finally {

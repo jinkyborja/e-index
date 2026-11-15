@@ -11,7 +11,7 @@
   import { get } from 'svelte/store';
   import { appData, setAppData, clearAppData } from './stores/appData.js';
   import { apiRequest } from './utils/api.js';
-  import { activateDemoMode, deactivateDemoMode, isDemoModeActive } from './stores/demoData.js';
+  import { activateDemoMode, deactivateDemoMode, getDemoModeRole, isDemoModeActive } from './stores/demoData.js';
   import { navigate, routeLocation, watchHistory } from './utils/router.js';
   import { dashboardPath, pathForPage, resolvePortalRoute } from './utils/routes.js';
   import { exportCsv } from './utils/export.js';
@@ -142,7 +142,8 @@
         authInitError = 'Unable to connect to the portal. Check your connection and try again.';
       }
       if (cancelled) return;
-      if (!user) {
+      const demoRole = !user ? getDemoModeRole() : null;
+      if (!user && !demoRole) {
         try {
           if (isDemoModeActive()) deactivateDemoMode();
         } catch (error) {
@@ -150,44 +151,14 @@
         }
       }
       void loadCollegeChoices();
-      if (user) {
-        portal = user.role;
-        teacherAuthenticated = user.role === 'teacher';
+      if (user || demoRole) {
+        const role = user?.role || demoRole;
+        portal = role;
+        teacherAuthenticated = role === 'teacher';
         try {
           await refreshPortalData();
         } catch (error) {
           notify(error.message);
-        }
-      }
-      async function startDemoMode(reset = false) {
-        if (!currentUser || !['admin', 'teacher'].includes(currentUser.role)) {
-          notify('Sign in to an administrator or teacher account before loading demo data.');
-          return;
-        }
-        try {
-          activateDemoMode(currentUser.role, reset);
-          await refreshPortalData();
-          await loadCollegeChoices();
-          go('Dashboard');
-          notify(reset ? 'The local demo data was reset.' : 'Local demo data is active. No database records were changed.');
-        } catch (error) {
-          notify(error.message || 'The local demo data could not be loaded.');
-        }
-      }
-      async function exitDemoMode() {
-        try {
-          deactivateDemoMode();
-          clearAppData();
-          selectedRegistrationIds = [];
-          selectedDate = new Date().toISOString().slice(0, 10);
-          await refreshPortalData();
-          await loadCollegeChoices();
-          go('Dashboard');
-          notify('Demo data was removed from this browser. Real portal data has been reloaded.');
-        } catch (error) {
-          clearAppData();
-          portalDataLoaded = false;
-          notify(`Demo data was removed, but real portal data could not be loaded: ${error.message}`);
         }
       }
       if (!cancelled) {
@@ -219,6 +190,53 @@
     { label: 'Reports', icon: FileBarChart },
     { label: 'Settings', icon: Settings }
   ];
+
+  async function startDemoMode(role = get(authUser)?.role || getDemoModeRole(), reset = false) {
+    if (!['admin', 'teacher'].includes(role)) {
+      notify('Choose an administrator or teacher demo to continue.');
+      return;
+    }
+    if (currentUser && currentUser.role !== role) {
+      notify('Sign out before switching to a different portal role.');
+      return;
+    }
+    try {
+      activateDemoMode(role, reset);
+      portal = role;
+      teacherAuthenticated = role === 'teacher';
+      page = 'Dashboard';
+      await refreshPortalData();
+      await loadCollegeChoices();
+      navigate(dashboardPath(role), { replace: true });
+      notify(reset ? 'The local demo data was reset.' : 'Local demo data is active. No database records were changed.');
+    } catch (error) {
+      notify(error.message || 'The local demo data could not be loaded.');
+    }
+  }
+  async function exitDemoMode() {
+    try {
+      deactivateDemoMode();
+      clearAppData();
+      selectedRegistrationIds = [];
+      selectedDate = new Date().toISOString().slice(0, 10);
+      await loadCollegeChoices();
+      if (!get(authUser)) {
+        portal = 'auth';
+        teacherAuthenticated = false;
+        page = 'Dashboard';
+        navigate('/login', { replace: true });
+        notify('Demo data was removed from this browser.');
+        return;
+      }
+      await refreshPortalData();
+      go('Dashboard');
+      notify('Demo data was removed from this browser. Real portal data has been reloaded.');
+    } catch (error) {
+      clearAppData();
+      portalDataLoaded = false;
+      notify(`Demo data was removed, but portal data could not be loaded: ${error.message}`);
+    }
+  }
 
   $: navItems = portal === 'admin' ? adminNav : teacherNav;
   $: isAdmin = portal === 'admin';
@@ -272,7 +290,7 @@
   $: currentAcademicYear = isDemoMode ? '2026-2027' : `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
   $: approvalRate = calculateApprovalRate(teachers, registrations);
   $: settingsKey = isDemoMode
-    ? (currentUser?.role === 'admin' ? 'admin' : 'teacher:demo')
+    ? (isAdmin ? 'admin' : 'teacher:demo')
     : isAdmin ? 'admin' : `teacher:${currentUser?.email || 'default'}`;
   $: userSettings = $appData.settings[settingsKey] || {
     firstName: nameParts[0] || '',
@@ -309,7 +327,7 @@
     && (!auditTo || new Date(record.time) <= new Date(`${auditTo}T23:59:59`)));
 
   function go(label) {
-    const role = get(authUser)?.role;
+    const role = get(authUser)?.role || (isDemoMode ? getDemoModeRole() : null);
     const path = pathForPage(role, label);
     if (!path) {
       notify('This page is not available for your account.');
@@ -359,6 +377,7 @@
     if (pathname === lastPath) return;
     lastPath = pathname;
     const user = get(authUser);
+    const demoRole = !user ? getDemoModeRole() : null;
 
     if (pathname === '/reset-password') {
       if (user) {
@@ -375,9 +394,11 @@
     }
 
     if (pathname === '/login') {
-      if (user) {
-        portal = user.role;
-        navigate(dashboardPath(user.role), { replace: true });
+      if (user || demoRole) {
+        const role = user?.role || demoRole;
+        portal = role;
+        teacherAuthenticated = role === 'teacher';
+        navigate(dashboardPath(role), { replace: true });
         return;
       }
       portal = 'auth';
@@ -388,22 +409,24 @@
 
     const route = resolvePortalRoute(pathname);
     if (!route) {
-      navigate(user ? dashboardPath(user.role) : '/login', { replace: true });
+      const role = user?.role || demoRole;
+      navigate(role ? dashboardPath(role) : '/login', { replace: true });
       return;
     }
-    if (!user) {
+    if (!user && !demoRole) {
       portal = 'auth';
       navigate('/login', { replace: true });
       return;
     }
-    if (user.role !== route.role) {
-      portal = user.role;
-      navigate(dashboardPath(user.role), { replace: true });
+    const role = user?.role || demoRole;
+    if (role !== route.role) {
+      portal = role;
+      navigate(dashboardPath(role), { replace: true });
       return;
     }
 
-    portal = user.role;
-    teacherAuthenticated = user.role === 'teacher';
+    portal = role;
+    teacherAuthenticated = role === 'teacher';
     selectPage(route.page);
   }
   function focusPageSearch() {
@@ -458,6 +481,10 @@
     }
   }
   async function logOut() {
+    if (!get(authUser) && isDemoModeActive()) {
+      await exitDemoMode();
+      return;
+    }
     try {
       await signOut();
     } catch (error) {
@@ -555,7 +582,7 @@
       if (data.isDemoData && !previousDataWasDemo && data.attendance?.[0]?.date) selectedDate = data.attendance[0].date;
       selectedRegistrationIds = selectedRegistrationIds.filter(id => data.registrations?.some(registration => registration.id === id && registration.status === 'Pending'));
       const key = data.isDemoData
-        ? (currentUser?.role === 'admin' ? 'admin' : 'teacher:demo')
+        ? (data.demoRole === 'admin' ? 'admin' : 'teacher:demo')
         : currentUser?.role === 'admin' ? 'admin' : `teacher:${currentUser?.email || ''}`;
       const settings = data.settings?.[key];
       if (settings?.notifications) notificationPreferences = { ...settings.notifications };
@@ -1210,6 +1237,16 @@
               <button class="auth-submit" type="submit" disabled={!authReady || (authMode === 'signup' && (collegeChoicesLoading || activeCollegeChoices.length === 0 || !signupCollegeId))}>{authMode === 'login' ? 'Sign in to your account' : 'Submit Request'} <ArrowRight size={17}/></button>
             </form>
           {/if}
+          {#if authMode === 'login' && authReady && !currentUser && !forgotPasswordMode && !resetPasswordMode}
+            <section class="auth-demo-entry" aria-label="Explore fictional dashboard data">
+              <p>Want to preview the portal?</p>
+              <div>
+                <button type="button" class="auth-demo-button" onclick={() => startDemoMode('admin')}>Explore Admin Demo</button>
+                <button type="button" class="auth-demo-button" onclick={() => startDemoMode('teacher')}>Explore Teacher Demo</button>
+              </div>
+              <small>Fictional browser-only records. No login, database changes, or emails.</small>
+            </section>
+          {/if}
         </div>
       </div>
       <footer class="auth-panel-footer">© 2026 E-Index <span>·</span> Built for better learning</footer>
@@ -1237,7 +1274,7 @@
       {/each}
     </nav>
     <div class="sidebar-bottom">
-      <button class="nav-item" onclick={logOut}><LogOut size={17}/><span>Log out</span></button>
+      <button class="nav-item" onclick={logOut}><LogOut size={17}/><span>{isDemoMode && !currentUser ? 'Exit demo' : 'Log out'}</span></button>
       <button class="nav-item collapse-item" aria-label={sidebarCollapsed ? 'Expand menu' : 'Collapse menu'} onclick={() => sidebarCollapsed = !sidebarCollapsed}><PanelLeftClose size={17}/><span>{sidebarCollapsed ? 'Expand menu' : 'Collapse menu'}</span></button>
     </div>
   </aside>
@@ -1465,7 +1502,7 @@
           <div class="demo-control-copy"><span class="demo-control-icon"><Info size={18}/></span><div><h3>{isDemoMode ? 'Local demo data is active' : 'Try the portal with sample data'}</h3><p>{isDemoMode ? 'Sample records and supported edits are saved only in this browser. Your signed-in account and database are not modified.' : 'Load fictional dashboard, class, attendance, and approval records locally after signing in. No demo credentials or database records are created.'}</p></div></div>
           <div class="demo-control-actions">
             {#if isDemoMode}
-              <button type="button" class="soft-btn" onclick={() => startDemoMode(true)}>Reset demo data</button>
+              <button type="button" class="soft-btn" onclick={() => startDemoMode(undefined, true)}>Reset demo data</button>
               <button type="button" class="primary" onclick={exitDemoMode}>Exit demo mode</button>
             {:else}
               <button type="button" class="primary" onclick={() => startDemoMode()}>Load demo data</button>
