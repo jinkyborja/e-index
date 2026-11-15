@@ -1289,7 +1289,6 @@
         </section>
 
       {:else if page === 'Pending Approvals' && isAdmin}
-        <div class="page-breadcrumb"><span>Administration</span><ChevronRight size={13}/><span>Pending Approvals</span></div>
         <PageTitle
           icon={Clock3}
           title="Pending Approvals"

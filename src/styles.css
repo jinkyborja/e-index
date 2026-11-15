@@ -346,7 +346,7 @@
 .teacher-form-modal .teacher-input-wrap{display:flex;align-items:center;gap:9px;min-width:0;height:41px;padding:0 10px;border:1px solid #e6dfe7;border-radius:8px;color:#918491;background:#fff}
 .teacher-form-modal .teacher-input-wrap:focus-within{border-color:#9c5577;outline:2px solid #a8587d20}
 .teacher-form-modal .teacher-input-wrap>svg{flex:none;color:#907f90}
-.teacher-form-modal .teacher-input-wrap input,.teacher-form-modal .teacher-input-wrap select{width:100%;min-width:0;height:100%;padding:0;border:0;border-radius:0;outline:0;color:#342a37;background:transparent;font:400 11px 'DM Sans',sans-serif}
+.teacher-form-modal .teacher-input-wrap input,.teacher-form-modal .teacher-input-wrap select{flex:1 1 0;width:0;min-width:0;height:100%;padding:0;border:0;border-radius:0;outline:0;color:#342a37;background:transparent;font:400 11px 'DM Sans',sans-serif;font-weight:400}
 .teacher-form-modal .teacher-input-wrap input:focus-visible,.teacher-form-modal .teacher-input-wrap select:focus-visible{outline:0}
 .teacher-form-modal .teacher-input-wrap select{cursor:pointer}
 .teacher-form-modal .teacher-input-wrap input::placeholder{color:#a198a4}
