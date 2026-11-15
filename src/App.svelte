@@ -822,6 +822,7 @@
 
 {#if !isAdmin && !teacherAuthenticated}
   <main class:signup-active={authMode === 'signup'} class="auth-page">
+    <div class="auth-shell">
     <section class="auth-story">
       <button class="auth-brand" onclick={() => switchPortal('admin')} aria-label="Return to administration dashboard">
         <span class="auth-brand-mark">E</span>
@@ -903,6 +904,7 @@
       </div>
       <footer class="auth-panel-footer">© 2026 E-Index <span>·</span> Built for better learning</footer>
     </section>
+    </div>
   </main>
 {:else}
 <div class:teacher-shell={!isAdmin} class:theme-dark={userSettings.appearance === 'Dark'} class="app-shell">
