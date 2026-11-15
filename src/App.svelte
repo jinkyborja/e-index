@@ -853,17 +853,7 @@
             <button class="auth-submit" type="submit">{authMode === 'login' ? 'Sign in to your account' : 'Request teacher access'} <ArrowRight size={17}/></button>
           </form>
 
-          {#if authMode === 'login'}
-            <div class="auth-demo-note">
-              <ShieldCheck size={16}/>
-              <span>
-                {#if authRole === 'teacher'}
-                  <strong>Sample Teacher Account</strong><br/>jinkysuson09@gmail.com / Teacher123!<br/><br/>
-                {/if}
-                <strong>Sample Admin Account</strong><br/>admin@gmail.com / Admin123!<br/>Frontend demo only; credentials are not secure.
-              </span>
-            </div>
-          {:else if authMode === 'signup'}
+          {#if authMode === 'signup'}
             <div class="auth-demo-note"><ShieldCheck size={16}/><span><strong>Frontend demo</strong> — registration is saved locally and waits for administrator approval.</span></div>
           {/if}
         </div>
