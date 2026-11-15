@@ -19,10 +19,10 @@ export async function restoreAuth() {
   }
 }
 
-export async function signIn(email, password, role, rememberMe) {
+export async function signIn(email, password, rememberMe) {
   const result = await apiRequest('/api/auth/login', {
     method: 'POST',
-    body: { email, password, role, rememberMe }
+    body: { email, password, rememberMe }
   });
   authUser.set(result.user);
   return { account: result.user, error: null };

@@ -43,7 +43,6 @@
 .auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:23px;padding:4px;border:1px solid #f0ebf0;border-radius:11px;background:#faf9fb}
 .auth-tabs button{min-height:36px;border:0;border-radius:8px;color:#817a8a;background:transparent;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:background .16s,color .16s,box-shadow .16s}
 .auth-tabs button.auth-tab-active{color:#811143;background:#fff;box-shadow:0 2px 8px #2b15300c}
-.auth-tabs.auth-tabs-single{grid-template-columns:1fr}
 .auth-form{display:grid;gap:15px;max-height:300px;overflow:hidden;transition:max-height .58s cubic-bezier(.22,1,.36,1)}
 .auth-form.signup-form{max-height:520px}
 .auth-form>label{display:grid;gap:7px;color:#393143;font-size:10px;font-weight:700}

@@ -135,6 +135,20 @@ test('login creates an HttpOnly cookie and /me returns only safe account data', 
   assert.equal(me.body.user.fullName, 'Test Teacher');
 });
 
+test('login without a selected portal uses the account role', async () => {
+  const app = appFor({
+    id: 'admin-1', email: 'admin@example.test', passwordHash,
+    fullName: 'Test Administrator', role: 'ADMIN', status: 'APPROVED',
+    department: 'Administration', staffId: null
+  });
+  const response = await request(app).post('/api/auth/login').send({
+    email: 'admin@example.test', password: 'Teacher123!'
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.role, 'admin');
+});
+
 test('pending accounts and role mismatches cannot start a session', async t => {
   await t.test('pending teacher', async () => {
     const app = appFor({

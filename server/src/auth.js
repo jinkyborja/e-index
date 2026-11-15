@@ -14,7 +14,7 @@ const DUMMY_PASSWORD_HASH = await bcrypt.hash('not-a-real-password', PASSWORD_RO
 const loginSchema = z.object({
   email: z.string().trim().email().transform(value => value.toLowerCase()),
   password: z.string().min(1).max(128),
-  role: z.enum(['admin', 'teacher']),
+  role: z.enum(['admin', 'teacher']).optional(),
   rememberMe: z.boolean().optional().default(false)
 });
 
@@ -189,7 +189,7 @@ export function createAuthRouter(prisma, {
       throw new HttpError(401, 'INVALID_CREDENTIALS', 'The email or password is incorrect.');
     }
 
-    if (user.role.toLowerCase() !== input.role) {
+    if (input.role && user.role.toLowerCase() !== input.role) {
       throw new HttpError(403, 'ROLE_MISMATCH', 'This account cannot access the selected portal.');
     }
     if (user.status !== 'APPROVED') {

@@ -30,7 +30,6 @@
   $: currentUser = $authUser;
   let teacherAuthenticated = false;
   let authMode = 'login';
-  let authRole = 'teacher';
   let authReady = false;
   let authInitError = '';
   let forgotPasswordMode = false;
@@ -122,7 +121,6 @@
       if (cancelled) return;
       if (user) {
         portal = user.role;
-        authRole = user.role;
         teacherAuthenticated = user.role === 'teacher';
         try {
           await refreshPortalData();
@@ -302,7 +300,6 @@
       return;
     }
     if (!user) {
-      authRole = route.role;
       portal = 'auth';
       navigate('/login', { replace: true });
       return;
@@ -314,7 +311,6 @@
     }
 
     portal = user.role;
-    authRole = user.role;
     teacherAuthenticated = user.role === 'teacher';
     selectPage(route.page);
   }
@@ -331,7 +327,6 @@
     authMode = value;
     forgotPasswordMode = false;
     resetPasswordMode = false;
-    if (value === 'signup') authRole = 'teacher';
     showPassword = false;
     loginPassword = '';
     signupPassword = '';
@@ -340,14 +335,6 @@
   }
   function setAuthMode(value) {
     applyAuthMode(value);
-  }
-  function setAuthRole(value) {
-    authRole = value;
-    authError = '';
-    loginEmail = '';
-    loginPassword = '';
-    rememberMe = false;
-    setAuthMode('login');
   }
   async function submitForgotPassword(event) {
     event.preventDefault();
@@ -379,7 +366,6 @@
     }
   }
   async function logOut() {
-    const role = isAdmin ? 'admin' : 'teacher';
     try {
       await signOut();
     } catch (error) {
@@ -389,7 +375,6 @@
     clearAppData();
     portal = 'auth';
     teacherAuthenticated = false;
-    authRole = role;
     rememberMe = false;
     setAuthMode('login');
     navigate('/login', { replace: true });
@@ -419,11 +404,10 @@
 
     const email = loginEmail.trim().toLowerCase();
     try {
-      const result = await signIn(email, loginPassword, authRole, rememberMe);
+      const result = await signIn(email, loginPassword, rememberMe);
       const account = result.account;
       authInitError = '';
       portal = account.role;
-      authRole = account.role;
       teacherAuthenticated = account.role === 'teacher';
       page = 'Dashboard';
       loginPassword = '';
@@ -799,7 +783,7 @@
 </script>
 
 <svelte:head>
-  <title>{portal === 'auth' ? `${authRole === 'admin' ? 'Administration' : 'Teacher'} ${authMode === 'login' ? 'Login' : 'Sign Up'} | E-Index` : `${page} | E-Index ${portal === 'admin' ? 'Administration' : 'Teacher Portal'}`}</title>
+  <title>{portal === 'auth' ? `${authMode === 'login' ? 'Sign In' : 'Teacher Sign Up'} | E-Index` : `${page} | E-Index ${portal === 'admin' ? 'Administration' : 'Teacher Portal'}`}</title>
 </svelte:head>
 
 {#if !isAdmin && !teacherAuthenticated}
@@ -832,16 +816,12 @@
           <div class="auth-mobile-brand"><span class="auth-brand-mark">E</span><strong>E-Index</strong></div>
           <div class="auth-heading">
             <h2>{resetPasswordMode ? 'Choose a new password' : forgotPasswordMode ? 'Reset your password' : authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? `Sign in to your ${authRole === 'admin' ? 'administration' : 'teacher'} workspace.` : 'Register with your school details to request teacher access.'}</p>
+            <p>{resetPasswordMode ? 'Enter a new password for your E-Index account.' : forgotPasswordMode ? 'Enter your registered school email to receive a secure reset link.' : authMode === 'login' ? 'Sign in to your E-Index workspace.' : 'Register with your school details to request teacher access.'}</p>
           </div>
           {#if !forgotPasswordMode && !resetPasswordMode}
-            <div class="auth-role-tabs" role="tablist" aria-label="Choose a portal">
-              <button type="button" class:auth-role-active={authRole === 'teacher'} role="tab" aria-selected={authRole === 'teacher'} onclick={() => setAuthRole('teacher')}>Teacher Portal</button>
-              <button type="button" class:auth-role-active={authRole === 'admin'} role="tab" aria-selected={authRole === 'admin'} onclick={() => setAuthRole('admin')}>Administration Portal</button>
-            </div>
-            <div class:auth-tabs-single={authRole === 'admin'} class="auth-tabs" role="tablist" aria-label="Account access">
+            <div class="auth-tabs" role="tablist" aria-label="Account access">
               <button class:auth-tab-active={authMode === 'login'} role="tab" aria-selected={authMode === 'login'} onclick={() => setAuthMode('login')}>Sign in</button>
-              {#if authRole === 'teacher'}<button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>{/if}
+              <button class:auth-tab-active={authMode === 'signup'} role="tab" aria-selected={authMode === 'signup'} onclick={() => setAuthMode('signup')}>Create account</button>
             </div>
           {/if}
 
