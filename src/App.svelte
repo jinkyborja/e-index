@@ -1279,25 +1279,6 @@
       {:else if page === 'Teachers' && isAdmin}
         <div class="teacher-accounts-page">
           <PageTitle icon={Users} title="Teacher Accounts" subtitle="Review teacher access and manage account status." action="Add Teacher" onAction={() => openTeacherForm()}/>
-          <section class="panel college-choices-panel" aria-labelledby="college-choices-title">
-            <div class="panel-heading college-choices-heading">
-              <div class="college-choices-title">
-                <span class="college-section-icon"><Building2 size={17}/></span>
-                <div><h3 id="college-choices-title">College Choices</h3><p>These provisional names and Guiuan Campus assignments are unverified. Activate only after confirming both.</p></div>
-              </div>
-              <span class="college-choice-count">{colleges.length} choices</span>
-            </div>
-            <div class="table-scroll college-table-scroll"><table class="college-table"><thead><tr><th scope="col">Code</th><th scope="col">College</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>
-              {#each colleges as college}
-                <tr>
-                  <td><span class="college-code">{college.code}</span></td>
-                  <td>{college.name}</td>
-                  <td><span class={`college-status ${college.isActive ? 'active' : 'inactive'}`}>{college.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td>{#if college.isActive}<button class="outline-btn college-action" type="button" onclick={() => askConfirmation('college-deactivate', college, 'Deactivate college', `Deactivate ${college.name}? Existing teacher assignments will be retained.`)}><XCircle size={14}/>Deactivate</button>{:else}<button class="primary college-action" type="button" onclick={() => openCollegeActivation(college)}><CheckCircle2 size={14}/>Confirm and activate</button>{/if}</td>
-                </tr>
-              {:else}<tr><td colspan="4" class="empty-table">No college records are available.</td></tr>{/each}
-            </tbody></table></div>
-          </section>
           <section class="panel table-panel teacher-table-panel" aria-label="Teacher account records">
             <div class="toolbar teacher-toolbar">
               <div class="search-field teacher-search"><Search size={16}/><input id="page-search" bind:value={searchText} oninput={() => currentPage = 1} aria-label="Search teacher accounts" placeholder="Search name, email, or staff ID..."/></div>
@@ -1338,6 +1319,25 @@
               <span>Page {currentPage} of {Math.max(1, Math.ceil(filteredTeachers.length / pageSize))}</span>
               <button class="pagination" type="button" aria-label="Next page" disabled={currentPage >= Math.ceil(filteredTeachers.length / pageSize)} onclick={() => currentPage += 1}><ChevronRight size={14}/></button>
             </div>
+          </section>
+          <section class="panel college-choices-panel" aria-labelledby="college-choices-title">
+            <div class="panel-heading college-choices-heading">
+              <div class="college-choices-title">
+                <span class="college-section-icon"><Building2 size={17}/></span>
+                <div><h3 id="college-choices-title">College Choices</h3><p>These provisional names and Guiuan Campus assignments are unverified. Activate only after confirming both.</p></div>
+              </div>
+              <span class="college-choice-count">{colleges.length} choices</span>
+            </div>
+            <div class="table-scroll college-table-scroll"><table class="college-table"><thead><tr><th scope="col">Code</th><th scope="col">College</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>
+              {#each colleges as college}
+                <tr>
+                  <td><span class="college-code">{college.code}</span></td>
+                  <td>{college.name}</td>
+                  <td><span class={`college-status ${college.isActive ? 'active' : 'inactive'}`}>{college.isActive ? 'Active' : 'Inactive'}</span></td>
+                  <td>{#if college.isActive}<button class="outline-btn college-action" type="button" onclick={() => askConfirmation('college-deactivate', college, 'Deactivate college', `Deactivate ${college.name}? Existing teacher assignments will be retained.`)}><XCircle size={14}/>Deactivate</button>{:else}<button class="primary college-action" type="button" onclick={() => openCollegeActivation(college)}><CheckCircle2 size={14}/>Confirm and activate</button>{/if}</td>
+                </tr>
+              {:else}<tr><td colspan="4" class="empty-table">No college records are available.</td></tr>{/each}
+            </tbody></table></div>
           </section>
         </div>
 
